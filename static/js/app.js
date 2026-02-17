@@ -263,7 +263,7 @@ function setupEventListeners() {
                 state.optimizations.fill_screen = e.target.checked;
                 console.log('Fill screen setting saved:', e.target.checked);
                 // Rebuild slides to apply new class
-                buildSlides();
+                buildSlides(state.currentIndex);
                 prioritizeFirstImage(state.currentIndex);
             } catch (error) {
                 console.error('Failed to save fill screen setting:', error);
@@ -291,7 +291,7 @@ function setupEventListeners() {
                 }
                 
                 // Rebuild slides to update video loop behavior
-                buildSlides();
+                buildSlides(state.currentIndex);
                 prioritizeFirstImage(state.currentIndex);
             } catch (error) {
                 console.error('Failed to save auto-advance setting:', error);
@@ -367,7 +367,7 @@ async function loadInitialData() {
         
         // Build slides
         if (state.images.length > 0) {
-            buildSlides();
+            buildSlides(0);
             prioritizeFirstImage();
             
             // Start auto-advance timer if enabled (after initial load)
@@ -392,31 +392,192 @@ async function loadInitialData() {
 // ============ Slide Building ============
 
 /**
- * Build slides for all images
+ * Cancel any pending deferred slide creation
+ * Call this at the start of mode transitions
  */
-function buildSlides() {
+function cancelDeferredCreation() {
+    if (state.deferredRicId) {
+        if ('cancelIdleCallback' in window) {
+            cancelIdleCallback(state.deferredRicId);
+        } else {
+            clearTimeout(state.deferredRicId);
+        }
+        state.deferredRicId = null;
+    }
+    state.deferredQueue = [];
+}
+
+/**
+ * Create a single slide element
+ * @param {number} index - The image index
+ * @returns {HTMLElement|null} The created slide element or null if invalid
+ */
+function createSlide(index) {
+    const src = state.images[index];
+    if (!src) return null;
+    
+    const slide = document.createElement('div');
+    slide.className = 'image-slide';
+    
+    // Apply fill-screen class if enabled
+    if (state.optimizations.fill_screen) {
+        slide.classList.add('fill-screen');
+    }
+    
+    slide.dataset.index = index;
+    slide.dataset.src = src;
+    
+    // Insert at correct position to maintain DOM order
+    // Find the appropriate position to insert
+    const slides = scrollContainer.querySelectorAll('.image-slide');
+    let insertBefore = null;
+    
+    for (const existingSlide of slides) {
+        const existingIndex = parseInt(existingSlide.dataset.index);
+        if (existingIndex > index) {
+            insertBefore = existingSlide;
+            break;
+        }
+    }
+    
+    if (insertBefore) {
+        scrollContainer.insertBefore(slide, insertBefore);
+    } else {
+        scrollContainer.appendChild(slide);
+    }
+    
+    // Observe the new slide
+    state.observer?.observe(slide);
+    state.gifObserver?.observe(slide);
+    
+    state.slidesCreated++;
+    
+    return slide;
+}
+
+/**
+ * Process deferred slide creation queue during browser idle time
+ * @param {IdleDeadline} deadline - Idle deadline from requestIdleCallback
+ */
+function processDeferredQueue(deadline) {
+    let created = 0;
+    
+    while (state.deferredQueue.length > 0 && 
+           created < state.chunkSize && 
+           (deadline?.timeRemaining() > 0 || !deadline)) {
+        
+        const index = state.deferredQueue.shift();
+        
+        // Skip if already exists (might have been created by ensureSlideExists)
+        if (!document.querySelector(`.image-slide[data-index="${index}"]`)) {
+            createSlide(index);
+            created++;
+        }
+    }
+    
+    // Schedule next chunk if queue not empty
+    if (state.deferredQueue.length > 0) {
+        if ('requestIdleCallback' in window) {
+            state.deferredRicId = requestIdleCallback(processDeferredQueue);
+        } else {
+            state.deferredRicId = setTimeout(() => processDeferredQueue(), 50);
+        }
+    } else {
+        state.deferredRicId = null;
+    }
+}
+
+/**
+ * Schedule deferred creation of slides outside immediate range
+ * @param {number} immediateStart - Start of immediate range (exclusive)
+ * @param {number} immediateEnd - End of immediate range (exclusive)
+ */
+function scheduleDeferredSlides(immediateStart, immediateEnd) {
+    // Cancel any existing deferred creation
+    cancelDeferredCreation();
+    
+    // Build queue of indices not yet created
+    state.deferredQueue = [];
+    
+    // Add slides before immediate range (in reverse order for natural fill)
+    for (let i = immediateStart - 1; i >= 0; i--) {
+        state.deferredQueue.push(i);
+    }
+    
+    // Add slides after immediate range
+    for (let i = immediateEnd; i < state.images.length; i++) {
+        state.deferredQueue.push(i);
+    }
+    
+    // Start processing if there are slides to create
+    if (state.deferredQueue.length > 0) {
+        // Use requestIdleCallback for background processing
+        if ('requestIdleCallback' in window) {
+            state.deferredRicId = requestIdleCallback(processDeferredQueue);
+        } else {
+            // Fallback for browsers without requestIdleCallback
+            state.deferredRicId = setTimeout(() => processDeferredQueue(), 0);
+        }
+    }
+}
+
+/**
+ * Ensure a slide exists before scrolling to it
+ * Creates the slide and its neighbors if they don't exist
+ * @param {number} index - Target slide index
+ */
+function ensureSlideExists(index) {
+    if (index < 0 || index >= state.images.length) return;
+    
+    // Check if slide already exists
+    const existing = document.querySelector(`.image-slide[data-index="${index}"]`);
+    if (existing) return;
+    
+    // Create the slide and its neighbors
+    const start = Math.max(0, index - state.immediateBuffer);
+    const end = Math.min(state.images.length, index + state.immediateBuffer + 1);
+    
+    for (let i = start; i < end; i++) {
+        if (!document.querySelector(`.image-slide[data-index="${i}"]`)) {
+            createSlide(i);
+        }
+    }
+}
+
+/**
+ * Build slides for images using phased creation
+ * Creates immediate slides synchronously, defers rest to idle time
+ * @param {number} startIndex - Index to center immediate creation around (default: 0)
+ */
+function buildSlides(startIndex = 0) {
     if (!scrollContainer) return;
     
+    // Cancel any pending deferred creation from previous mode
+    cancelDeferredCreation();
+    
+    // Clear container and reset state
     scrollContainer.innerHTML = '';
-    state.slidesCreated = state.images.length;
+    state.slidesCreated = 0;
     
-    // Create slide elements
-    state.images.forEach((src, index) => {
-        const slide = document.createElement('div');
-        slide.className = 'image-slide';
-        
-        // Apply fill-screen class if enabled
-        if (state.optimizations.fill_screen) {
-            slide.classList.add('fill-screen');
+    // For small libraries, create all slides immediately
+    if (state.images.length <= 20) {
+        for (let i = 0; i < state.images.length; i++) {
+            createSlide(i);
         }
-        
-        slide.dataset.index = index;
-        slide.dataset.src = src;
-        scrollContainer.appendChild(slide);
-    });
+        return;
+    }
     
-    // Observe slides
-    observeSlides();
+    // Calculate immediate range around start index
+    const start = Math.max(0, startIndex - state.immediateBuffer);
+    const end = Math.min(state.images.length, startIndex + state.immediateBuffer + 1);
+    
+    // Create immediate slides synchronously
+    for (let i = start; i < end; i++) {
+        createSlide(i);
+    }
+    
+    // Schedule deferred creation for remaining slides
+    scheduleDeferredSlides(start, end);
 }
 
 /**
@@ -1223,7 +1384,7 @@ async function enterFavoritesMode() {
         
         if (state.images.length > 0) {
             showLoadingOverlay();
-            buildSlides();
+            buildSlides(0);
             prioritizeFirstImage();
             updateUI(); // Update UI to show correct image info
             updateTopNavActiveState(); // Update top nav to show "Likes"
@@ -1259,7 +1420,7 @@ async function exitFavoritesMode() {
     if (noFavorites) noFavorites.style.display = 'none';
     
     showLoadingOverlay();
-    buildSlides();
+    buildSlides(state.savedIndex);
     prioritizeFirstImage(state.savedIndex);
     updateUI(); // Update UI to show correct image info
     scrollToImage(state.savedIndex, 'instant'); // Instant scroll - already showing loading overlay
@@ -1299,7 +1460,7 @@ async function toggleShuffle() {
         // Reset to first image and rebuild slides
         state.currentIndex = 0;
         showLoadingOverlay();
-        buildSlides();
+        buildSlides(0);
         prioritizeFirstImage();
         updateUI(); // Update UI to show correct image info
         
@@ -1346,7 +1507,7 @@ async function enterFolderMode(folderPath) {
         state.currentIndex = 0;
         
         showLoadingOverlay();
-        buildSlides();
+        buildSlides(0);
         prioritizeFirstImage();
         updateUI(); // Update UI to show correct image info
         updateTopNavActiveState(); // Update top nav to show active folder
@@ -1377,7 +1538,7 @@ function exitFolderMode() {
     state.currentIndex = state.savedIndex;
     
     showLoadingOverlay();
-    buildSlides();
+    buildSlides(state.savedIndex);
     prioritizeFirstImage(state.savedIndex);
     updateUI(); // Update UI to show correct image info
     updateTopNavActiveState(); // Update top nav to show "All"
@@ -1413,7 +1574,7 @@ async function viewTrash() {
         
         if (state.images.length > 0) {
             showLoadingOverlay();
-            buildSlides();
+            buildSlides(0);
             prioritizeFirstImage();
             updateUI(); // Update UI to show correct image info
             updateTopNavActiveState(); // Update top nav to show "Trash"
@@ -1464,7 +1625,7 @@ async function exitTrashMode() {
     if (filePathDisplay) filePathDisplay.style.display = ''; // Show file path display again
     
     showLoadingOverlay();
-    buildSlides();
+    buildSlides(state.savedIndex);
     prioritizeFirstImage(state.savedIndex);
     updateUI(); // Update UI to show correct image info
     updateTopNavActiveState(); // Update top nav to show "All"
@@ -2118,7 +2279,7 @@ async function reloadImages(sortOrder) {
         state.currentIndex = 0;
         
         showLoadingOverlay();
-        buildSlides();
+        buildSlides(0);
         prioritizeFirstImage();
         updateUI();
         
@@ -2399,8 +2560,14 @@ function toggleAutoAdvanceOff() {
 function scrollToImage(index, behavior = null) {
     if (index < 0 || index >= state.images.length) return;
     
+    // CRITICAL: Ensure target slide exists before querying DOM
+    ensureSlideExists(index);
+    
     const slide = document.querySelector(`.image-slide[data-index="${index}"]`);
-    if (!slide) return;
+    if (!slide) {
+        console.error(`[scrollToImage] Failed to create slide ${index}`);
+        return;
+    }
     
     // Determine scroll behavior if not specified
     if (behavior === null) {

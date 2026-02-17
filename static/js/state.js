@@ -21,6 +21,12 @@ export const state = {
     currentIndex: 0,
     slidesCreated: 0,
     
+    // Lazy slide creation state
+    deferredQueue: [],       // Queue of slide indices waiting to be created
+    deferredRicId: null,     // requestIdleCallback ID for deferred creation
+    immediateBuffer: 10,     // Number of slides to create immediately around current position
+    chunkSize: 50,           // Slides to create per idle callback
+    
     // Observers
     observer: null,          // Main IntersectionObserver for lazy loading
     gifObserver: null,       // Separate observer for GIF freeze/unfreeze
@@ -82,6 +88,8 @@ export function resetState() {
     state.unshuffledImages = [];
     state.currentIndex = 0;
     state.slidesCreated = 0;
+    state.deferredQueue = [];
+    state.deferredRicId = null;
     state.observer = null;
     state.gifObserver = null;
     state.shuffleEnabled = false;
