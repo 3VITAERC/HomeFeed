@@ -1932,6 +1932,17 @@ function hideShortcutsModal() {
 }
 
 function showTrashModal() {
+    // Update trash count display
+    const count = state.trash.size;
+    if (trashCountInfo) {
+        trashCountInfo.textContent = `${count} photo${count !== 1 ? 's' : ''} marked for deletion`;
+    }
+    
+    // Enable/disable empty trash button based on count
+    if (emptyTrashBtn) {
+        emptyTrashBtn.disabled = count === 0;
+    }
+    
     if (trashModal) trashModal.style.display = 'flex';
 }
 
