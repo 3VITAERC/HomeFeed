@@ -27,10 +27,9 @@ export const state = {
     immediateBuffer: 10,     // Number of slides to create immediately around current position
     chunkSize: 50,           // Slides to create per idle callback
     
-    // Observers
-    observer: null,          // Main IntersectionObserver for lazy loading
-    gifObserver: null,       // Separate observer for GIF freeze/unfreeze
-    
+    // Global audio state (owned by viewport.js, mirrored here for inspection)
+    globalMuted: true,
+
     // User preferences
     shuffleEnabled: false,
     sortOrder: 'newest',     // 'newest' = New → Old, 'oldest' = Old → New
@@ -90,8 +89,7 @@ export function resetState() {
     state.slidesCreated = 0;
     state.deferredQueue = [];
     state.deferredRicId = null;
-    state.observer = null;
-    state.gifObserver = null;
+    state.globalMuted = true;
     state.shuffleEnabled = false;
     state.sortOrder = 'newest';
     state.favorites = new Set();

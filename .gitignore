@@ -2,6 +2,7 @@
 config.json
 favorites.json
 trash.json
+.thumbnails
 
 # Plans directory
 plans/

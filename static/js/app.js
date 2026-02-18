@@ -8,8 +8,19 @@ import { state, BATCH_SIZE, IMAGE_POOL_BUFFER, getPreloadCount, isAnyModalOpen }
 
 // Import utilities
 import { extractPath, isGifUrl, isVideoUrl, isConvertedGifUrl, normalizePath } from './utils/path.js';
-import { freezeGif, unfreezeGif } from './utils/gif.js';
-import { toggleVideoMute, showMuteIconFeedback, setupVideoProgress, addVideoControls, formatVideoTime } from './utils/video.js';
+import { addVideoControls } from './utils/video.js';
+
+// Import viewport manager (replaces state.observer + state.gifObserver)
+import {
+    initViewport,
+    observeSlide,
+    destroyObserver,
+    recreateObserver,
+    activateMediaIfCurrent,
+    activateSlideByIndex,
+    toggleGlobalMute,
+    isAudioEnabled,
+} from './viewport.js';
 
 // Import API client
 import API from './api.js';
@@ -44,6 +55,24 @@ let autoAdvanceTimer = null;
 // ============ Initialization ============
 
 /**
+ * Called by ViewportManager whenever the active slide changes.
+ * Handles everything except media control (which viewport.js owns).
+ *
+ * @param {number} newIndex - The newly active slide index
+ */
+function _onSlideActivated(newIndex) {
+    updateUI();
+
+    const preloadCount = getPreloadCount();
+    sequentialPreload(newIndex, 1, preloadCount, true);   // ahead
+    sequentialPreload(newIndex, 1, preloadCount, false);  // behind
+
+    if (state.optimizations.auto_advance) {
+        startAutoAdvanceTimer();
+    }
+}
+
+/**
  * Initialize the application
  */
 async function init() {
@@ -53,8 +82,15 @@ async function init() {
     // Set up event listeners
     setupEventListeners();
     
-    // Initialize observers BEFORE loading data (so they're ready when slides are built)
-    setupObservers();
+    // Initialize viewport manager BEFORE loading data (so it's ready when slides are built)
+    initViewport(scrollContainer, _onSlideActivated);
+    
+    // Wire up the needsLoad event — viewport.js dispatches this when a slide
+    // enters the viewport and has no content yet
+    scrollContainer.addEventListener('needsLoad', (e) => {
+        const slide = e.target.closest('.image-slide');
+        if (slide) loadImageForSlide(slide);
+    });
     
     // Load initial data
     await loadInitialData();
@@ -446,9 +482,8 @@ function createSlide(index) {
         scrollContainer.appendChild(slide);
     }
     
-    // Observe the new slide
-    state.observer?.observe(slide);
-    state.gifObserver?.observe(slide);
+    // Register with viewport manager (single observer handles lazy-load + media control)
+    observeSlide(slide);
     
     state.slidesCreated++;
     
@@ -555,9 +590,15 @@ function buildSlides(startIndex = 0) {
     // Cancel any pending deferred creation from previous mode
     cancelDeferredCreation();
     
+    // Disconnect observer before clearing DOM (avoids stale element callbacks)
+    destroyObserver();
+    
     // Clear container and reset state
     scrollContainer.innerHTML = '';
     state.slidesCreated = 0;
+    
+    // Recreate observer so new slides can be registered
+    recreateObserver();
     
     // For small libraries, create all slides immediately
     if (state.images.length <= 20) {
@@ -685,7 +726,12 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
     video.playsInline = true;
     video.muted = true;
     video.loop = !state.optimizations.auto_advance;  // Only loop if auto-advance is disabled
-    video.preload = 'metadata';  // Changed from 'auto' - faster initial load
+    
+    // Safari iOS ignores runtime changes to the preload attribute, so we must
+    // set the correct value upfront.
+    // - Priority (current slide): 'auto' — load everything immediately
+    // - Non-priority: 'metadata' — only fetch duration/dimensions, save bandwidth
+    video.preload = isPriorityImage ? 'auto' : 'metadata';
     
     if (isConvertedGif) {
         video.dataset.originalGif = 'true';
@@ -751,8 +797,14 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
     }, 30000);
     
     video.onloadedmetadata = function() {
-        // Now load the actual video data
-        this.preload = 'auto';
+        // Metadata loaded (duration, dimensions available).
+        // For non-priority videos, upgrade to 'auto' now that we know the video
+        // is valid and worth buffering. This works on Chrome/Firefox.
+        // Safari iOS ignores this change, but that's OK — non-priority videos
+        // will load their data when _activateMedia calls play() on them.
+        if (!isPriorityImage) {
+            this.preload = 'auto';
+        }
     };
     
     video.onloadeddata = function() {
@@ -775,10 +827,10 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
             setTimeout(() => poster.remove(), 300);
         }
         
-        // Try to play the video
-        this.play().catch((err) => {
-            console.log(`[Video] Autoplay prevented, will retry on intersection: ${err.message}`);
-        });
+        // Let ViewportManager decide whether to play.
+        // Only plays if this slide is currently the active one — prevents
+        // preloaded off-screen videos from autoplaying.
+        activateMediaIfCurrent(slide);
     };
     
     video.onerror = function(e) {
@@ -838,124 +890,11 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
 }
 
 // ============ Observers ============
-
-/**
- * Set up IntersectionObservers
- */
-function setupObservers() {
-    // Main observer for lazy loading - use higher threshold for more accurate current slide tracking
-    const options = {
-        root: scrollContainer,
-        rootMargin: '100px 0px',
-        threshold: [0, 0.5] // Trigger at 0% and 50% visibility
-    };
-    
-    state.observer = new IntersectionObserver((entries) => {
-        // Find the most visible slide for currentIndex tracking
-        let mostVisibleEntry = null;
-        let highestRatio = 0;
-        
-        entries.forEach(entry => {
-            const slide = entry.target;
-            const index = parseInt(slide.dataset.index);
-            
-            // Load image if not loaded and partially visible
-            if (entry.isIntersecting && !slide.querySelector('img, video')) {
-                loadImageForSlide(slide);
-            }
-            
-            // Track the most visible slide (highest intersection ratio)
-            if (entry.intersectionRatio > highestRatio) {
-                highestRatio = entry.intersectionRatio;
-                mostVisibleEntry = entry;
-            }
-        });
-        
-        // Update currentIndex only for the most visible slide (50%+ threshold)
-        if (mostVisibleEntry && mostVisibleEntry.intersectionRatio >= 0.5) {
-            const index = parseInt(mostVisibleEntry.target.dataset.index);
-            if (index !== state.currentIndex) {
-                // Mute the previous video when scrolling away
-                const prevSlide = document.querySelector(`.image-slide[data-index="${state.currentIndex}"]`);
-                if (prevSlide) {
-                    const prevSrc = prevSlide.dataset.src;
-                    if (isVideoUrl(prevSrc)) {
-                        const prevVideo = prevSlide.querySelector('video');
-                        if (prevVideo) {
-                            prevVideo.muted = true;
-                        }
-                    }
-                }
-                
-                state.currentIndex = index;
-                updateUI();
-                // Preload adjacent images when current index changes
-                const preloadCount = getPreloadCount();
-                sequentialPreload(index, 1, preloadCount, true);  // Ahead
-                sequentialPreload(index, 1, preloadCount, false); // Behind
-                
-                // Start auto-advance timer for photos
-                if (state.optimizations.auto_advance) {
-                    startAutoAdvanceTimer();
-                }
-            }
-        }
-    }, options);
-    
-    // GIF observer for freeze/unfreeze
-    const gifOptions = {
-        root: scrollContainer,
-        rootMargin: '50px 0px',
-        threshold: 0
-    };
-    
-    state.gifObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            const slide = entry.target;
-            const src = slide.dataset.src;
-            
-            // Handle GIFs
-            if (isGifUrl(src)) {
-                const img = slide.querySelector('img');
-                const video = slide.querySelector('video[data-original-gif="true"]');
-                
-                if (entry.isIntersecting) {
-                    if (img) unfreezeGif(img);
-                    if (video) unfreezeGif(video);
-                } else {
-                    if (img) freezeGif(img);
-                    if (video) freezeGif(video);
-                }
-            }
-            
-            // Handle videos - play when visible, pause when not
-            if (isVideoUrl(src)) {
-                const video = slide.querySelector('video');
-                if (video) {
-                    if (entry.isIntersecting) {
-                        video.play().catch(() => {
-                            // Autoplay was prevented
-                        });
-                    } else {
-                        video.pause();
-                        // Auto-mute when scrolling away from video
-                        video.muted = true;
-                    }
-                }
-            }
-        });
-    }, gifOptions);
-}
-
-/**
- * Observe all slides
- */
-function observeSlides() {
-    document.querySelectorAll('.image-slide').forEach(slide => {
-        state.observer?.observe(slide);
-        state.gifObserver?.observe(slide);
-    });
-}
+// NOTE: Observer setup has been moved to viewport.js (ViewportManager).
+// - initViewport() is called from init() with the _onSlideActivated callback
+// - observeSlide() is called from createSlide() for each new slide
+// - destroyObserver() / recreateObserver() are called from buildSlides()
+// The old setupObservers() and observeSlides() functions have been removed.
 
 // ============ Priority Loading ============
 
@@ -2365,12 +2304,9 @@ function setupDoubleTapToLike() {
             singleTapTimeout = setTimeout(() => {
                 // If we're still on the same slide and only had one tap
                 if (tapCount === 1 && lastTapTarget === slide && lastTapTime === now) {
-                    // Single tap - mute/unmute video
+                    // Single tap on video — toggle global mute (Instagram-style)
                     if (isVideo) {
-                        const video = slide.querySelector('video');
-                        if (video) {
-                            toggleVideoMute(video, slide);
-                        }
+                        toggleGlobalMute();
                     }
                 }
                 singleTapTimeout = null;
@@ -2452,10 +2388,8 @@ function handleKeyboard(e) {
             }
             break;
         case 'm':
-            // Mute/unmute video
-            const currentSlide = document.querySelector(`.image-slide[data-index="${state.currentIndex}"]`);
-            const video = currentSlide?.querySelector('video');
-            if (video) toggleVideoMute(video, currentSlide);
+            // Toggle global mute (Instagram-style: affects all videos)
+            toggleGlobalMute();
             break;
         case 'i':
             showInfoModal();
