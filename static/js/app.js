@@ -840,6 +840,24 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
             setTimeout(() => poster.remove(), 300);
         }
         
+        // Play/pause trick for next-slide videos:
+        // Forces the browser to decode and render the first frame,
+        // eliminating the black flash when user scrolls to this video.
+        // Only applies to isNextSlide (the +1 slide ahead of current).
+        if (isNextSlide) {
+            const v = this;
+            v.play().then(() => {
+                // Guard: only pause if user hasn't scrolled to this slide yet
+                const idx = parseInt(slide.dataset.index, 10);
+                if (idx !== state.currentIndex) {
+                    v.pause();
+                    v.currentTime = 0;
+                }
+            }).catch(() => {
+                // Autoplay blocked — this is fine, video will play when scrolled to
+            });
+        }
+        
         // Let ViewportManager decide whether to play.
         // Only plays if this slide is currently the active one — prevents
         // preloaded off-screen videos from autoplaying.
@@ -969,6 +987,25 @@ function sequentialPreload(centerIndex, current, max, ahead = true) {
         // This gives instant playback when user scrolls forward
         const isNextSlide = (ahead && current === 1);
         loadImageForSlide(slide, false, isNextSlide);
+    } else if (slide && ahead && current === 1) {
+        // Slide already loaded — check if it's a video that needs first-frame rendering
+        // This handles the case where a video was preloaded with preload='metadata'
+        // and now becomes the +1 slide as user scrolls forward
+        const video = slide.querySelector('video');
+        if (video && video.readyState >= 1) {
+            // Video has at least metadata — force first frame decode/paint
+            // Using play/pause trick for maximum browser compatibility
+            video.play().then(() => {
+                // Guard: only pause if user hasn't scrolled to this slide
+                const idx = parseInt(slide.dataset.index, 10);
+                if (idx !== state.currentIndex) {
+                    video.pause();
+                    video.currentTime = 0;
+                }
+            }).catch(() => {
+                // Autoplay blocked — video will play when scrolled to
+            });
+        }
     }
     
     setTimeout(() => {
