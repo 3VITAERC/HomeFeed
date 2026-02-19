@@ -635,13 +635,14 @@ function showNoImages() {
  * Load image for a slide
  * @param {HTMLElement} slide - The slide element
  * @param {boolean} isPriorityImage - If true, hide loading overlay when loaded
+ * @param {boolean} isNextSlide - If true, pre-buffer video for instant playback (next slide only)
  */
-function loadImageForSlide(slide, isPriorityImage = false) {
+function loadImageForSlide(slide, isPriorityImage = false, isNextSlide = false) {
     const src = slide.dataset.src;
     if (!src) return;
     
     if (isVideoUrl(src)) {
-        loadVideoForSlide(slide, src, false, isPriorityImage);
+        loadVideoForSlide(slide, src, false, isPriorityImage, isNextSlide);
     } else if (isGifUrl(src)) {
         loadGifForSlide(slide, src, isPriorityImage);
     } else {
@@ -713,15 +714,16 @@ function loadGifForSlide(slide, src, isPriorityImage = false) {
  * 
  * Loading strategy:
  * 1. Show blurred poster immediately (if enabled)
- * 2. Load video with preload='metadata' for faster initial load
+ * 2. Load video with appropriate preload strategy
  * 3. When video is ready, crossfade from poster to video
  * 
  * @param {HTMLElement} slide - The slide element
  * @param {string} src - The video source URL
  * @param {boolean} isConvertedGif - True if this is a GIF converted to WebM
  * @param {boolean} isPriorityImage - If true, hide loading overlay when loaded
+ * @param {boolean} isNextSlide - If true, pre-buffer for instant playback (next slide only)
  */
-function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage = false) {
+function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage = false, isNextSlide = false) {
     const video = document.createElement('video');
     video.playsInline = true;
     video.muted = true;
@@ -730,8 +732,16 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
     // Safari iOS ignores runtime changes to the preload attribute, so we must
     // set the correct value upfront.
     // - Priority (current slide): 'auto' — load everything immediately
-    // - Non-priority: 'metadata' — only fetch duration/dimensions, save bandwidth
-    video.preload = isPriorityImage ? 'auto' : 'metadata';
+    // - Next slide (+1): 'auto' — pre-buffer ~1-2MB for instant playback
+    // - Others: 'metadata' — only fetch duration/dimensions, save bandwidth
+    // 
+    // With HTTP Range requests, 'auto' only streams what's needed (~1-2MB),
+    // not the entire file. If user scrolls away, streaming stops automatically.
+    if (isPriorityImage || isNextSlide) {
+        video.preload = 'auto';
+    } else {
+        video.preload = 'metadata';
+    }
     
     if (isConvertedGif) {
         video.dataset.originalGif = 'true';
@@ -955,7 +965,10 @@ function sequentialPreload(centerIndex, current, max, ahead = true) {
     const slide = document.querySelector(`.image-slide[data-index="${preloadIndex}"]`);
     
     if (slide && !slide.querySelector('img, video')) {
-        loadImageForSlide(slide);
+        // Mark the immediate next slide (+1) for video pre-buffering
+        // This gives instant playback when user scrolls forward
+        const isNextSlide = (ahead && current === 1);
+        loadImageForSlide(slide, false, isNextSlide);
     }
     
     setTimeout(() => {
