@@ -3,6 +3,9 @@ config.json
 favorites.json
 trash.json
 .thumbnails
+.archive-ignore
+Guides
+Plans
 
 # Plans directory
 plans/
