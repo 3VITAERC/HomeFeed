@@ -41,7 +41,8 @@ export const state = {
         video_poster_cache: false,
         fill_screen: false,
         auto_advance: false,
-        auto_advance_delay: 3
+        auto_advance_delay: 3,
+        preload_distance: 3  // Number of slides to preload ahead (0-10)
     },
     
     // User data
@@ -67,13 +68,12 @@ export const state = {
 };
 
 /**
- * Get dynamic preload count based on library size
- * Large libraries (1000+ images) preload less aggressively to reduce memory pressure
+ * Get preload count from user settings
  * 
- * @returns {number} Number of images to preload
+ * @returns {number} Number of images to preload ahead (0-10)
  */
 export function getPreloadCount() {
-    return state.images.length > 1000 ? 1 : 3;
+    return state.optimizations.preload_distance ?? 3;
 }
 
 /**

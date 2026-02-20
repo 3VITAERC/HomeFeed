@@ -486,6 +486,7 @@ The app includes optional performance optimizations that cache processed version
 | **Video Posters** | Extracts first frame as preview image | Instant preview while video loads | ffmpeg |
 | **Fill Screen** | Crops images to fill viewport | No black bars on mobile | None |
 | **Auto-Advance** | Auto-scroll when video ends or after delay for photos | Hands-free browsing | None |
+| **Preload Distance** | Number of slides to preload ahead (0-10) | Smoother scrolling | None |
 
 > **ffmpeg** is a system binary (not pip package). Install separately.
 
@@ -500,7 +501,8 @@ The app includes optional performance optimizations that cache processed version
         "video_poster_cache": false,
         "fill_screen": false,
         "auto_advance": false,
-        "auto_advance_delay": 3
+        "auto_advance_delay": 3,
+        "preload_distance": 3
     }
 }
 ```
@@ -512,3 +514,19 @@ POST /api/settings          # Update settings
 GET  /api/cache             # Get cache stats (file count, size)
 DELETE /api/cache           # Clear all cached files
 ```
+
+### Preload Distance Implementation
+
+The preload distance setting controls how many slides ahead of the viewport should be preloaded:
+
+**How it works:**
+1. `getPreloadCount()` in `state.js` returns the user's setting (0-10)
+2. `sequentialPreload()` in `app.js` creates slides on-demand and loads their content
+3. Preloaded images use `loading='eager'` to force actual loading (not lazy)
+
+**Known Issues (as of implementation):**
+- Setting of 0 still preloads +1 slide due to IntersectionObserver's `rootMargin: '100px'`
+- Video audio preloading (`preloadAudioForNextSlide`) may still trigger even at 0
+- State may not persist correctly across page refreshes or settings modal open/close
+
+See `Plans/preload-fixes.md` for planned improvements.

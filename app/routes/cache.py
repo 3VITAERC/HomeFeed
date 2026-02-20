@@ -45,8 +45,8 @@ def update_settings():
         current_optimizations = get_optimization_settings()
         for key, value in data['optimizations'].items():
             if key in DEFAULT_OPTIMIZATIONS:
-                # Handle integer settings (auto_advance_delay)
-                if key == 'auto_advance_delay':
+                # Handle integer settings (auto_advance_delay, preload_distance)
+                if key in ('auto_advance_delay', 'preload_distance'):
                     current_optimizations[key] = int(value)
                 else:
                     current_optimizations[key] = bool(value)

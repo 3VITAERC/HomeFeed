@@ -65,8 +65,10 @@ function _onSlideActivated(newIndex) {
     updateUI();
 
     const preloadCount = getPreloadCount();
-    sequentialPreload(newIndex, 1, preloadCount, true);   // ahead
-    sequentialPreload(newIndex, 1, preloadCount, false);  // behind
+    // Only preload AHEAD (not behind) based on user setting
+    if (preloadCount > 0) {
+        sequentialPreload(newIndex, 1, preloadCount, true);   // ahead only
+    }
 
     if (state.optimizations.auto_advance) {
         startAutoAdvanceTimer();
@@ -354,6 +356,24 @@ function setupEventListeners() {
         });
     }
     
+    // Preload distance slider
+    const preloadDistanceSlider = document.getElementById('preloadDistanceSlider');
+    const preloadDistanceValue = document.getElementById('preloadDistanceValue');
+    if (preloadDistanceSlider && preloadDistanceValue) {
+        preloadDistanceSlider.addEventListener('input', async (e) => {
+            const distance = parseInt(e.target.value);
+            preloadDistanceValue.textContent = distance;
+            state.optimizations.preload_distance = distance;
+            
+            try {
+                await API.updateSettings({ optimizations: { preload_distance: distance } });
+                console.log('Preload distance saved:', distance);
+            } catch (error) {
+                console.error('Failed to save preload distance:', error);
+            }
+        });
+    }
+    
     // Auto-advance indicator click (toggles off)
     const autoAdvanceIndicator = document.getElementById('autoAdvanceIndicator');
     if (autoAdvanceIndicator) {
@@ -637,17 +657,18 @@ function showNoImages() {
  * @param {HTMLElement} slide - The slide element
  * @param {boolean} isPriorityImage - If true, hide loading overlay when loaded
  * @param {boolean} isNextSlide - If true, pre-buffer video for instant playback (next slide only)
+ * @param {boolean} isPreload - If true, force eager loading (not lazy) for preloaded images
  */
-function loadImageForSlide(slide, isPriorityImage = false, isNextSlide = false) {
+function loadImageForSlide(slide, isPriorityImage = false, isNextSlide = false, isPreload = false) {
     const src = slide.dataset.src;
     if (!src) return;
     
     if (isVideoUrl(src)) {
         loadVideoForSlide(slide, src, false, isPriorityImage, isNextSlide);
     } else if (isGifUrl(src)) {
-        loadGifForSlide(slide, src, isPriorityImage);
+        loadGifForSlide(slide, src, isPriorityImage, isPreload);
     } else {
-        loadStaticImageForSlide(slide, src, isPriorityImage);
+        loadStaticImageForSlide(slide, src, isPriorityImage, isPreload);
     }
 }
 
@@ -657,14 +678,18 @@ function loadImageForSlide(slide, isPriorityImage = false, isNextSlide = false) 
  * @param {HTMLElement} slide - The slide element
  * @param {string} src - The image source URL
  * @param {boolean} isPriorityImage - If true, hide loading overlay when loaded
+ * @param {boolean} isPreload - If true, force eager loading for preloaded images
  */
-function loadStaticImageForSlide(slide, src, isPriorityImage = false) {
+function loadStaticImageForSlide(slide, src, isPriorityImage = false, isPreload = false) {
     const img = document.createElement('img');
     
     // Priority images get high fetch priority and eager loading
+    // Preloaded images also get eager loading to ensure they actually load
     if (isPriorityImage) {
         img.fetchPriority = 'high';
         img.loading = 'eager';
+    } else if (isPreload) {
+        img.loading = 'eager';  // Force eager loading for preloaded images
     } else {
         img.loading = 'lazy';
     }
@@ -703,10 +728,11 @@ function loadStaticImageForSlide(slide, src, isPriorityImage = false) {
  * @param {HTMLElement} slide - The slide element
  * @param {string} src - The image source URL
  * @param {boolean} isPriorityImage - If true, hide loading overlay when loaded
+ * @param {boolean} isPreload - If true, force eager loading for preloaded images
  */
-function loadGifForSlide(slide, src, isPriorityImage = false) {
+function loadGifForSlide(slide, src, isPriorityImage = false, isPreload = false) {
     // Load GIF as static image
-    loadStaticImageForSlide(slide, src, isPriorityImage);
+    loadStaticImageForSlide(slide, src, isPriorityImage, isPreload);
 }
 
 /**
@@ -932,7 +958,7 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
 
 /**
  * Prioritize loading the first image
- * Preloads images both ahead AND behind for smoother scrolling
+ * Preloads images ahead based on user setting
  */
 function prioritizeFirstImage(priorityIndex = 0) {
     const slide = document.querySelector(`.image-slide[data-index="${priorityIndex}"]`);
@@ -952,11 +978,11 @@ function prioritizeFirstImage(priorityIndex = 0) {
         loadImageForSlide(slide, true);  // true = isPriorityImage
     }
     
-    // Preload images both ahead and behind
-    // This creates a "window" of cached images around the current position
+    // Preload images ahead only (not behind)
     const preloadCount = getPreloadCount();
-    sequentialPreload(priorityIndex, 1, preloadCount, true);  // Ahead
-    sequentialPreload(priorityIndex, 1, preloadCount, false); // Behind
+    if (preloadCount > 0) {
+        sequentialPreload(priorityIndex, 1, preloadCount, true);  // Ahead only
+    }
 }
 
 /**
@@ -983,30 +1009,52 @@ function sequentialPreload(centerIndex, current, max, ahead = true) {
     
     const slide = document.querySelector(`.image-slide[data-index="${preloadIndex}"]`);
     
-    if (slide && !slide.querySelector('img, video')) {
+    // Debug logging
+    if (current === 1) {
+        console.log(`[Preload] Starting preload from index ${centerIndex}, max: ${max}, direction: ${ahead ? 'ahead' : 'behind'}`);
+    }
+    
+    // If slide doesn't exist, create it on-demand
+    if (!slide) {
+        console.log(`[Preload] Creating slide ${preloadIndex} on-demand`);
+        createSlide(preloadIndex);
+    }
+    
+    // Re-query in case we just created it
+    const targetSlide = document.querySelector(`.image-slide[data-index="${preloadIndex}"]`);
+    
+    if (!targetSlide) {
+        console.log(`[Preload] Slide ${preloadIndex} still doesn't exist, skipping`);
+    } else if (targetSlide.querySelector('img, video')) {
+        console.log(`[Preload] Slide ${preloadIndex} already has content, skipping`);
+    }
+    
+    if (targetSlide && !targetSlide.querySelector('img, video')) {
+        console.log(`[Preload] Loading content for slide ${preloadIndex}`);
         // Mark the immediate next slide (+1) for video pre-buffering
         // This gives instant playback when user scrolls forward
         const isNextSlide = (ahead && current === 1);
-        loadImageForSlide(slide, false, isNextSlide);
+        // Pass isPreload=true to force eager loading (not lazy)
+        loadImageForSlide(targetSlide, false, isNextSlide, true);
         
         // Preload audio for next video slide (+1 position)
         if (isNextSlide) {
-            const src = slide.dataset.src;
+            const src = targetSlide.dataset.src;
             if (src && isVideoUrl(src)) {
                 preloadAudioForNextSlide(src);
             }
         }
-    } else if (slide && ahead && current === 1) {
+    } else if (targetSlide && ahead && current === 1) {
         // Slide already loaded — check if it's a video that needs first-frame rendering
         // This handles the case where a video was preloaded with preload='metadata'
         // and now becomes the +1 slide as user scrolls forward
-        const video = slide.querySelector('video');
+        const video = targetSlide.querySelector('video');
         if (video && video.readyState >= 1) {
             // Video has at least metadata — force first frame decode/paint
             // Using play/pause trick for maximum browser compatibility
             video.play().then(() => {
                 // Guard: only pause if user hasn't scrolled to this slide
-                const idx = parseInt(slide.dataset.index, 10);
+                const idx = parseInt(targetSlide.dataset.index, 10);
                 if (idx !== state.currentIndex) {
                     video.pause();
                     video.currentTime = 0;
@@ -1017,7 +1065,7 @@ function sequentialPreload(centerIndex, current, max, ahead = true) {
         }
         
         // Preload audio for next video slide (+1 position) even if already loaded
-        const src = slide.dataset.src;
+        const src = targetSlide.dataset.src;
         if (src && isVideoUrl(src)) {
             preloadAudioForNextSlide(src);
         }
@@ -1811,13 +1859,17 @@ async function loadSettingsModalData() {
         const autoAdvanceToggle = document.getElementById('toggleAutoAdvance');
         const autoAdvanceDelaySlider = document.getElementById('autoAdvanceDelaySlider');
         const autoAdvanceDelayValue = document.getElementById('autoAdvanceDelayValue');
+        const preloadDistanceSlider = document.getElementById('preloadDistanceSlider');
+        const preloadDistanceValue = document.getElementById('preloadDistanceValue');
         
         if (thumbnailToggle) thumbnailToggle.checked = settings.optimizations?.thumbnail_cache || false;
         if (videoPosterToggle) videoPosterToggle.checked = settings.optimizations?.video_poster_cache || false;
         if (fillScreenToggle) fillScreenToggle.checked = settings.optimizations?.fill_screen || false;
         if (autoAdvanceToggle) autoAdvanceToggle.checked = settings.optimizations?.auto_advance || false;
-        if (autoAdvanceDelaySlider) autoAdvanceDelaySlider.value = settings.optimizations?.auto_advance_delay || 3;
-        if (autoAdvanceDelayValue) autoAdvanceDelayValue.textContent = settings.optimizations?.auto_advance_delay || 3;
+        if (autoAdvanceDelaySlider) autoAdvanceDelaySlider.value = settings.optimizations?.auto_advance_delay ?? 3;
+        if (autoAdvanceDelayValue) autoAdvanceDelayValue.textContent = settings.optimizations?.auto_advance_delay ?? 3;
+        if (preloadDistanceSlider) preloadDistanceSlider.value = settings.optimizations?.preload_distance ?? 3;
+        if (preloadDistanceValue) preloadDistanceValue.textContent = settings.optimizations?.preload_distance ?? 3;
         
         // Setup cache settings toggle
         const cacheHeader = document.getElementById('cacheSettingsHeader');

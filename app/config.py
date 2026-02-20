@@ -35,7 +35,8 @@ DEFAULT_OPTIMIZATIONS: Dict[str, Any] = {
     'video_poster_cache': False,
     'fill_screen': False,
     'auto_advance': False,
-    'auto_advance_delay': 3
+    'auto_advance_delay': 3,
+    'preload_distance': 3  # Number of slides to preload ahead (0-10)
 }
 
 # Mime types for image serving
