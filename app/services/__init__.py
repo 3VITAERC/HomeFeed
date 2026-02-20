@@ -1,6 +1,6 @@
 """
 Services module for LocalFeed.
-Contains business logic for path handling, caching, and optimizations.
+Contains business logic for path handling, caching, optimizations, and auth.
 """
 
 from app.services.path_utils import (
@@ -37,6 +37,16 @@ from app.services.data import (
     save_trash,
     cleanup_trash,
 )
+from app.services.auth import (
+    auth,
+    is_auth_enabled,
+    is_authenticated,
+    login_required,
+    session_login,
+    session_logout,
+    generate_csrf_token,
+    validate_csrf_token,
+)
 
 __all__ = [
     # Path utilities
@@ -69,4 +79,13 @@ __all__ = [
     'load_trash',
     'save_trash',
     'cleanup_trash',
+    # Authentication
+    'auth',
+    'is_auth_enabled',
+    'is_authenticated',
+    'login_required',
+    'session_login',
+    'session_logout',
+    'generate_csrf_token',
+    'validate_csrf_token',
 ]

@@ -9,6 +9,7 @@ from app.routes.favorites import favorites_bp
 from app.routes.trash import trash_bp
 from app.routes.cache import cache_bp
 from app.routes.pages import pages_bp
+from app.routes.auth import auth_bp
 
 __all__ = [
     'images_bp',
@@ -17,4 +18,5 @@ __all__ = [
     'trash_bp',
     'cache_bp',
     'pages_bp',
+    'auth_bp',
 ]

@@ -23,15 +23,18 @@ LocalFeed/
 │   │   ├── favorites.py   # /api/favorites/*
 │   │   ├── trash.py       # /api/trash/*
 │   │   ├── cache.py       # /api/cache, /api/settings
+│   │   ├── auth.py        # /login, /logout, /api/auth/*
 │   │   └── pages.py       # /, /settings, /scroll, /static
 │   └── services/
 │       ├── __init__.py    # Service exports
 │       ├── data.py        # Config, favorites, trash data management
 │       ├── path_utils.py  # Path validation and normalization
 │       ├── image_cache.py # Image list caching
+│       ├── auth.py        # Authentication service
 │       └── optimizations.py # Thumbnail/WebM conversion
 ├── static/
 │   ├── index.html         # Main HTML (~500 lines) - structure only
+│   ├── login.html         # Login page
 │   ├── style.css          # TikTok-style CSS
 │   └── js/
 │       ├── app.js         # Main entry point
@@ -43,7 +46,8 @@ LocalFeed/
 │           └── video.js   # Video controls
 ├── config.json            # Saved folder paths (gitignored)
 ├── favorites.json         # Saved favorites (gitignored)
-└── trash.json             # Saved trash marks (gitignored)
+├── trash.json             # Saved trash marks (gitignored)
+└── .flask_session/        # Session storage (gitignored)
 ```
 
 ## Development Commands
@@ -74,6 +78,56 @@ PORT=9000 python server.py
 - **Frontend:** ES6 modules with vanilla JS, no build step required
 - **Data storage:** JSON files (config, favorites, trash) - no database
 - **Image serving:** Direct file serving with ETag caching (7-day max-age)
+- **Authentication:** Optional password protection via environment variable
+
+---
+
+## Authentication
+
+LocalFeed supports optional password protection. When enabled, all routes require authentication.
+
+### Enabling Authentication
+
+Set the `LOCALFEED_PASSWORD` environment variable:
+
+```bash
+# One-time run
+LOCALFEED_PASSWORD=yourpassword python server.py
+
+# Or export for persistence
+export LOCALFEED_PASSWORD=yourpassword
+python server.py
+```
+
+### How It Works
+
+1. **Session-based auth:** Uses Flask-Session with filesystem storage (`.flask_session/`)
+2. **CSRF protection:** Login form includes CSRF token
+3. **Optional:** Without `LOCALFEED_PASSWORD` set, the app has no authentication
+4. **Session expiry:** Sessions expire when the browser closes (not persistent)
+
+### Auth Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/login` | GET | Login page (HTML) |
+| `/login` | POST | Submit password (JSON or form) |
+| `/logout` | POST | Log out current session |
+| `/api/auth/status` | GET | Check if auth is enabled and user is authenticated |
+| `/api/auth/csrf` | GET | Get CSRF token for login form |
+
+### Implementation Details
+
+- **`app/services/auth.py`** - Core auth logic (password verification, session management)
+- **`app/routes/auth.py`** - Auth endpoints (login, logout, status)
+- **`static/login.html`** - Login page UI
+- **`app/__init__.py`** - `before_request` hook checks auth for all routes
+
+The `before_request` hook in `app/__init__.py` intercepts all requests and:
+1. Skips auth check if `LOCALFEED_PASSWORD` is not set
+2. Allows auth-related routes (`/login`, `/api/auth/*`)
+3. Checks session for authenticated state
+4. Redirects to login page or returns 401 for API requests
 
 ---
 

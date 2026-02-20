@@ -1969,6 +1969,9 @@ async function loadSettingsModalData() {
             trashBadge.style.display = state.trash.size > 0 ? 'inline' : 'none';
         }
         
+        // Setup logout button (check auth status first)
+        setupLogoutButton();
+        
     } catch (error) {
         console.error('Failed to load settings data:', error);
     }
@@ -2008,6 +2011,49 @@ function renderSettingsFolderList(folders) {
 
 function hideSettingsModal() {
     if (settingsModal) settingsModal.style.display = 'none';
+}
+
+/**
+ * Setup logout button - check auth status and show/hide logout section
+ */
+async function setupLogoutButton() {
+    const logoutSection = document.getElementById('settingsLogoutSection');
+    const logoutBtn = document.getElementById('settingsLogoutBtn');
+    
+    if (!logoutSection || !logoutBtn) return;
+    
+    try {
+        const response = await fetch('/api/auth/status');
+        const data = await response.json();
+        
+        // Only show logout button if auth is enabled and user is authenticated
+        if (data.auth_enabled && data.authenticated) {
+            logoutSection.style.display = 'block';
+            
+            logoutBtn.onclick = async () => {
+                try {
+                    const logoutResponse = await fetch('/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (logoutResponse.ok) {
+                        // Redirect to login page
+                        window.location.href = '/login';
+                    }
+                } catch (error) {
+                    console.error('Failed to logout:', error);
+                }
+            };
+        } else {
+            logoutSection.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Failed to check auth status:', error);
+        logoutSection.style.display = 'none';
+    }
 }
 
 function showShortcutsModal() {

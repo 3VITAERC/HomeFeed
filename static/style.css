@@ -2177,6 +2177,43 @@ html, body {
     text-align: center;
 }
 
+/* ============ Settings Logout Section ============ */
+
+.settings-logout-section {
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 14px 20px;
+    background: rgba(255, 149, 0, 0.1);
+    border: 1px solid rgba(255, 149, 0, 0.2);
+    border-radius: 12px;
+    color: #FF9500;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.settings-logout-btn:hover {
+    background: rgba(255, 149, 0, 0.15);
+}
+
+.settings-logout-btn:active {
+    transform: scale(0.98);
+}
+
+.settings-logout-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
 /* ============ Settings Cache Section ============ */
 
 .settings-cache-section {

@@ -7,6 +7,9 @@ trash.json
 Guides
 Plans
 
+# Flask session files
+.flask_session/
+
 # Plans directory
 plans/
 

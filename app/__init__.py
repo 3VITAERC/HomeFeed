@@ -4,8 +4,9 @@ LocalFeed - Flask Application Factory.
 
 import os
 import json
-from flask import Flask
+from flask import Flask, session, redirect, url_for, request, jsonify
 from flask_compress import Compress
+from flask_session import Session
 
 
 def _ensure_config_files_exist():
@@ -57,6 +58,13 @@ def create_app(config=None):
     if config:
         app.config.update(config)
     
+    # Session configuration for authentication
+    app.config['SECRET_KEY'] = os.environ.get('LOCALFEED_SECRET_KEY', os.urandom(24).hex())
+    app.config['SESSION_TYPE'] = 'filesystem'
+    app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
+    app.config['SESSION_FILE_DIR'] = os.path.join(project_root, '.flask_session')
+    Session(app)
+    
     # Enable Gzip compression for API responses
     # Compresses JSON responses > 500 bytes, achieving 70-80% size reduction
     app.config['COMPRESS_MIN_SIZE'] = 500  # Only compress responses > 500 bytes
@@ -70,6 +78,7 @@ def create_app(config=None):
     from app.routes.trash import trash_bp
     from app.routes.cache import cache_bp
     from app.routes.pages import pages_bp
+    from app.routes.auth import auth_bp
     
     app.register_blueprint(images_bp)
     app.register_blueprint(folders_bp)
@@ -77,5 +86,41 @@ def create_app(config=None):
     app.register_blueprint(trash_bp)
     app.register_blueprint(cache_bp)
     app.register_blueprint(pages_bp)
+    app.register_blueprint(auth_bp)
+    
+    # Add authentication check before each request
+    from app.services import is_auth_enabled, is_authenticated
+    
+    @app.before_request
+    def check_auth():
+        """Check authentication before each request.
+        
+        Skips auth check for:
+        - Login page and endpoints
+        - Auth status API
+        - Static files (CSS, JS) - these are protected by the main auth
+        """
+        # Skip auth check if not enabled
+        if not is_auth_enabled():
+            return None
+        
+        # Allow login-related routes
+        if request.endpoint and request.endpoint.startswith('auth.'):
+            return None
+        
+        # Allow static files for login page
+        if request.path.startswith('/static/'):
+            # Still require auth for protected static content
+            # But allow login page assets
+            return None
+        
+        # Check if authenticated
+        if is_authenticated():
+            return None
+        
+        # Not authenticated - redirect to login or return 401
+        if request.accept_mimetypes.accept_html:
+            return redirect(url_for('auth.login_page'))
+        return jsonify({'error': 'Authentication required'}), 401
     
     return app

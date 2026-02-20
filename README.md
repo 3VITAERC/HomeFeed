@@ -14,6 +14,7 @@ A TikTok-style vertical scrolling image viewer for your local photos. Scroll thr
 - **Trash/Mark for Deletion** - Mark photos for deletion via menu, review and batch delete
 - **Performance optimized** - HTTP caching, image list caching, and video posters.
 - **Auto-Advance Mode** - Auto-scroll when video ends or after a configurable delay for photos
+- **Optional Authentication** - Password protection for exposing the app remotely
 
 
 
@@ -84,6 +85,56 @@ You'll see output like:
 ### 4. Start Scrolling!
 
 Click "View Images" and scroll through your photos TikTok-style!
+
+## Authentication (Optional)
+
+LocalFeed supports optional password protection. This is useful when exposing the app remotely (e.g., through Cloudflare Tunnel, ngrok, etc.).
+
+### Enable Authentication
+
+Set the `LOCALFEED_PASSWORD` environment variable:
+
+```bash
+# One-time run
+LOCALFEED_PASSWORD=yourpassword python server.py
+
+# Or export for persistence
+export LOCALFEED_PASSWORD=yourpassword
+python server.py
+
+# Production with gunicorn
+LOCALFEED_PASSWORD=yourpassword gunicorn -w 4 -b 0.0.0.0:7123 server:app
+```
+
+### How It Works
+
+- **Without password set:** No authentication required (default behavior)
+- **With password set:** All routes require login
+- **Session-based:** Login persists until browser closes
+- **CSRF protected:** Login form includes CSRF token
+
+### Auth Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/login` | GET | Login page |
+| `/login` | POST | Submit password (JSON or form) |
+| `/logout` | POST | Log out current session |
+| `/api/auth/status` | GET | Check auth status |
+
+### Example: Login via API
+
+```bash
+# Get CSRF token
+curl -c cookies.txt http://localhost:7123/api/auth/csrf
+
+# Login (use the csrf_token from previous response)
+curl -b cookies.txt -c cookies.txt -X POST http://localhost:7123/login \
+  -H "Content-Type: application/json" \
+  -d '{"password":"yourpassword","csrf_token":"TOKEN_HERE"}'
+```
+
+> **Tip:** Use Cloudflare Access or similar for primary authentication, and LocalFeed's password as a secondary layer.
 
 ## Usage from iPhone
 
@@ -205,6 +256,7 @@ LocalFeed/
 ├── config.json            # Saved folder paths (gitignored, auto-generated)
 ├── favorites.json         # Saved favorites (gitignored, auto-generated)
 ├── trash.json             # Saved trash marks (gitignored, auto-generated)
+├── .flask_session/        # Session storage (gitignored, auto-generated)
 ├── app/                   # Backend application package
 │   ├── __init__.py        # Flask app factory
 │   ├── config.py          # Configuration constants
@@ -214,14 +266,17 @@ LocalFeed/
 │   │   ├── favorites.py   # Favorites API
 │   │   ├── trash.py       # Trash/mark-for-deletion API
 │   │   ├── cache.py       # Cache settings API
+│   │   ├── auth.py        # Authentication endpoints
 │   │   └── pages.py       # HTML page routes
 │   └── services/          # Business logic services
 │       ├── data.py        # JSON data management
 │       ├── path_utils.py  # Path validation utilities
 │       ├── image_cache.py # Image list caching
+│       ├── auth.py        # Authentication service
 │       └── optimizations.py # Thumbnail/WebM conversion
 └── static/                # Frontend assets
     ├── index.html         # Main HTML structure
+    ├── login.html         # Login page
     ├── style.css          # TikTok-style CSS
     └── js/                # ES6 JavaScript modules
         ├── app.js         # Main application entry
