@@ -54,6 +54,9 @@ let searchDebounceTimer = null;
 // Auto-advance timer
 let autoAdvanceTimer = null;
 
+// Loading overlay failsafe timeout
+let loadingFailsafeTimeout = null;
+
 // ============ Initialization ============
 
 /**
@@ -1104,6 +1107,10 @@ function sequentialPreload(centerIndex, current, max, ahead = true, generation =
  * Hide the loading overlay with fade animation
  */
 function hideLoadingOverlay() {
+    // Clear any pending failsafe timeout
+    clearTimeout(loadingFailsafeTimeout);
+    loadingFailsafeTimeout = null;
+    
     if (loadingOverlay) {
         loadingOverlay.classList.add('hidden');
     }
@@ -1111,6 +1118,7 @@ function hideLoadingOverlay() {
 
 /**
  * Show the loading overlay - for mode changes that reload images
+ * Includes a 3-second failsafe that auto-hides if something goes wrong.
  */
 function showLoadingOverlay() {
     if (loadingOverlay) {
@@ -1121,6 +1129,17 @@ function showLoadingOverlay() {
         // Trigger reflow for animation
         loadingOverlay.offsetHeight;
         loadingOverlay.classList.remove('hidden');
+        
+        // Clear any existing failsafe timeout
+        clearTimeout(loadingFailsafeTimeout);
+        
+        // Set failsafe: auto-hide after 3 seconds if still showing
+        loadingFailsafeTimeout = setTimeout(() => {
+            if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
+                hideLoadingOverlay();
+                console.log('[Loading] Failsafe: auto-hid spinner after 3s');
+            }
+        }, 3000);
     }
 }
 
