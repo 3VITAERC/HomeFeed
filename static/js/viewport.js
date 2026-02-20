@@ -39,6 +39,7 @@ let _nextAudioSrc = null;      // track what's loaded in _nextAudioEl
 let _activeVideo = null;       // current video element being synced to audio
 let _syncInterval = null;      // interval for audio/video time sync
 let _hasActivatedOnce = false; // true after first slide activation (handles index-0 initial load)
+let _scrollGeneration = 0;     // incremented on every slide change; used to cancel stale preload chains
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ export function destroyObserver() {
     _observer?.disconnect();
     _observer = null;
     _hasActivatedOnce = false;
+    _scrollGeneration++; // invalidate any in-flight preload chains during mode rebuild
     // Stop audio sync when rebuilding slides
     _stopAudioSync();
     _activeVideo = null;
@@ -86,6 +88,17 @@ export function destroyObserver() {
 export function recreateObserver() {
     if (_observer) return;
     _createObserver();
+}
+
+/**
+ * Returns the current scroll generation counter.
+ * Increments every time the active slide changes or slides are rebuilt.
+ * Used by sequentialPreload() to detect and abort stale preload chains.
+ *
+ * @returns {number}
+ */
+export function getScrollGeneration() {
+    return _scrollGeneration;
 }
 
 /**
@@ -221,6 +234,7 @@ function _setActiveSlide(newIndex) {
         );
         if (prevSlide) _deactivateMedia(prevSlide);
         state.currentIndex = newIndex;
+        _scrollGeneration++; // invalidate stale sequentialPreload chains
     }
 
     const newSlide = document.querySelector(
@@ -276,9 +290,35 @@ function _activateMedia(slide) {
 }
 
 /**
+ * Remove all child elements from a slide, aborting any in-progress network loads first.
+ * After clearing, the slide returns to an empty shell so needsLoad can re-trigger
+ * the next time the user scrolls to it.
+ */
+function _clearSlideContent(slide) {
+    const children = Array.from(slide.children);
+    for (const child of children) {
+        if (child.tagName === 'VIDEO') {
+            child.pause();
+            child.removeAttribute('src');
+            child.load(); // forces the browser to cancel any pending range request
+        } else if (child.tagName === 'IMG') {
+            child.src = ''; // cancels any in-flight image download
+        }
+        child.remove();
+    }
+}
+
+/**
  * Deactivate media on a slide:
- *   – Video → pause and stop buffering
- *   – GIF   → freeze
+ *   – Video → pause; abort in-flight HTTP range request if still downloading
+ *   – GIF   → freeze; abort download if still loading
+ *   – Image → abort download if still loading
+ *
+ * NOTE: video.preload = 'none' does NOT cancel an in-flight HTTP range request
+ * in Chrome/Safari. Only removeAttribute('src') + load() actually kills the request.
+ * We call _clearSlideContent() for slides that are still actively downloading so
+ * the browser connection is freed immediately and the slide becomes an empty shell,
+ * allowing needsLoad to re-trigger if the user scrolls back.
  */
 function _deactivateMedia(slide) {
     const src = slide.dataset.src;
@@ -288,17 +328,22 @@ function _deactivateMedia(slide) {
         const video = slide.querySelector('video');
         if (video) {
             video.pause();
-            
-            // Stop any pending Range requests / buffering
-            // Setting preload to 'none' tells the browser to stop downloading
-            video.preload = 'none';
-            
-            // If this was the active video, stop audio sync
+
+            // Audio cleanup — must happen before we potentially remove the element
             if (video === _activeVideo) {
                 _stopAudioSync();
                 _activeVideo = null;
-                // Pause audio when leaving a video slide
                 if (_audioEl) _audioEl.pause();
+            }
+
+            // NETWORK_LOADING (2) means the browser is actively fetching data.
+            // Abort the request by clearing src — this frees bandwidth immediately.
+            // The slide becomes an empty shell so needsLoad re-triggers on revisit.
+            if (video.networkState === HTMLMediaElement.NETWORK_LOADING) {
+                _clearSlideContent(slide);
+            } else {
+                // Already idle or fully loaded — just stop any future buffering
+                video.preload = 'none';
             }
         }
     }
@@ -308,6 +353,16 @@ function _deactivateMedia(slide) {
         const video = slide.querySelector('video[data-original-gif="true"]');
         if (img)   freezeGif(img);
         if (video) freezeGif(video);
+        // Abort if the GIF image is still downloading
+        if (img && !img.complete) {
+            _clearSlideContent(slide);
+        }
+    } else if (!isVideoUrl(src)) {
+        // Static image: abort if still downloading
+        const img = slide.querySelector('img');
+        if (img && !img.complete) {
+            _clearSlideContent(slide);
+        }
     }
 }
 

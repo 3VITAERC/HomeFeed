@@ -287,16 +287,18 @@ The app uses a unified tap handling system in `setupDoubleTapToLike()`:
 - Videos auto-mute when scrolled out of view (handled in main observer)
 - The tap window is 500ms for subsequent heart spawns
 
-### Lazy Loading & Image Pool
+### Lazy Loading & Distance Guard
 
 ```javascript
 const BATCH_SIZE = 50;           // Create slides in batches
-const IMAGE_POOL_BUFFER = 5;     // Keep 5 images above/below viewport
-
-function updateImagePool():
-    // Remove images far from viewport to save memory
-    // Only ~10-15 images loaded at once
+const IMAGE_POOL_BUFFER = 5;     // Max distance from current slide that can trigger a load
 ```
+
+**There is no `updateImagePool()` function.** The `IMAGE_POOL_BUFFER` constant is used only as a distance threshold in two guards:
+1. The `needsLoad` event handler — skips loads if the slide is > 5 positions from `state.currentIndex`
+2. At the top of `loadImageForSlide()` — same check, bypassed only for `isPriorityImage`
+
+Content removal from far-away slides is handled by `_clearSlideContent()` in `_deactivateMedia()` (see Request Cancellation below), not by any periodic scan.
 
 ### Priority Loading (Perceived Performance)
 
@@ -340,6 +342,7 @@ Videos use a **dual audio element** architecture for instant audio:
 let _audioEl = null;           // Current video's audio
 let _nextAudioEl = null;       // Preloaded for +1 video
 let _nextAudioSrc = null;      // Track what's loaded
+let _scrollGeneration = 0;     // Incremented on every slide change; stale preload chains check this
 
 // During sequentialPreload():
 preloadAudioForNextSlide(videoSrc);  // Loads into _nextAudioEl
@@ -353,6 +356,24 @@ preloadAudioForNextSlide(videoSrc);  // Loads into _nextAudioEl
 - Play/pause trick forces actual audio buffering
 - `canplay` event handling for currentTime sync
 - Sync interval: 100ms with 0.15s drift threshold
+
+### Request Cancellation
+
+When a slide leaves the viewport, `_deactivateMedia()` in `viewport.js` actively cancels any in-flight network request:
+
+```javascript
+// For videos still actively downloading (NETWORK_LOADING):
+function _clearSlideContent(slide) {
+    // For each child: abort download, then remove from DOM
+    video.pause(); video.removeAttribute('src'); video.load(); // cancels HTTP range request
+    img.src = '';  // cancels image download
+    child.remove(); // slide becomes empty shell → needsLoad re-fires on revisit
+}
+```
+
+**Rule:** `video.preload = 'none'` does NOT cancel in-flight requests. Only `removeAttribute('src') + load()` works. Always use `_clearSlideContent()` for aggressive abort.
+
+**When content is preserved:** If `video.networkState !== NETWORK_LOADING` (already fully buffered), the element stays and `preload='none'` is set. Backward scrolling to recently-viewed content is instant.
 
 ### Loading Indicator
 
@@ -394,9 +415,12 @@ function hideLoadingOverlay()  // Fade out spinner
 - Video: poster `onload` (if enabled) or video `onloadeddata`
 - GIF: same as image (loaded as static image)
 
-function sequentialPreload(centerIndex, current, max):
+```javascript
+// sequentialPreload signature — generation param is critical:
+function sequentialPreload(centerIndex, current, max, ahead = true, generation = 0):
+    // generation !== getScrollGeneration() → abort immediately (stale chain)
     // Load adjacent images with 150ms delays between batches
-    // Prevents bandwidth contention from multiple videos/GIFs
+    // Only the +1 slide (isNextSlide=true) gets preload='auto'; others get 'metadata'
 ```
 
 ---
@@ -472,6 +496,26 @@ function normalizePath(path) {
    - Preserve ETag and caching headers
    - Test with both images and videos
 
+7. **`video.preload = 'none'` does NOT cancel an in-flight HTTP range request**
+   - Setting `preload` is a hint only; the network request continues
+   - To actually abort: `video.removeAttribute('src'); video.load()`
+   - This is handled by `_clearSlideContent()` in `_deactivateMedia()`
+
+8. **`updateImagePool()` does not exist**
+   - The `IMAGE_POOL_BUFFER` constant is only used for distance guards in `needsLoad` and `loadImageForSlide`
+   - Content removal happens in `_deactivateMedia()` via `_clearSlideContent()` when `networkState === NETWORK_LOADING`
+   - If you add code that references `updateImagePool()`, it will silently do nothing
+
+9. **`sequentialPreload` must receive and pass a `generation` parameter**
+   - Every call site must capture `getScrollGeneration()` and pass it
+   - Every recursive `setTimeout` call must forward `generation`
+   - Without this, fast scrolling creates multiple concurrent download chains
+
+10. **When a slide is cleared by `_clearSlideContent`, that is normal and expected**
+    - The slide becomes an empty shell — `needsLoad` will reload it when user scrolls back
+    - Content reloads from browser disk cache (instant for local server)
+    - Do NOT treat a blank slide after scrolling back as a bug; it's working correctly
+
 ---
 
 ## Performance Optimizations (Cache System)
@@ -523,10 +567,9 @@ The preload distance setting controls how many slides ahead of the viewport shou
 1. `getPreloadCount()` in `state.js` returns the user's setting (0-10)
 2. `sequentialPreload()` in `app.js` creates slides on-demand and loads their content
 3. Preloaded images use `loading='eager'` to force actual loading (not lazy)
+4. `sequentialPreload` carries a `generation` parameter — if `_scrollGeneration` changes (user scrolled), the chain aborts immediately
 
-**Known Issues (as of implementation):**
-- Setting of 0 still preloads +1 slide due to IntersectionObserver's `rootMargin: '100px'`
-- Video audio preloading (`preloadAudioForNextSlide`) may still trigger even at 0
-- State may not persist correctly across page refreshes or settings modal open/close
-
-See `Plans/preload-fixes.md` for planned improvements.
+**At preload_distance = 0:**
+- `sequentialPreload` is not called (guarded by `if (preloadCount > 0)`)
+- Slides still load via `needsLoad` observer events when they enter the viewport's rootMargin zone
+- Those observer-triggered loads are cancelled immediately when the slide exits viewport and `networkState === NETWORK_LOADING`

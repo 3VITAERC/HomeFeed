@@ -21,6 +21,7 @@ import {
     toggleGlobalMute,
     isAudioEnabled,
     preloadAudioForNextSlide,
+    getScrollGeneration,
 } from './viewport.js';
 
 // Import API client
@@ -67,7 +68,8 @@ function _onSlideActivated(newIndex) {
     const preloadCount = getPreloadCount();
     // Only preload AHEAD (not behind) based on user setting
     if (preloadCount > 0) {
-        sequentialPreload(newIndex, 1, preloadCount, true);   // ahead only
+        const gen = getScrollGeneration();
+        sequentialPreload(newIndex, 1, preloadCount, true, gen);   // ahead only
     }
 
     if (state.optimizations.auto_advance) {
@@ -92,7 +94,13 @@ async function init() {
     // enters the viewport and has no content yet
     scrollContainer.addEventListener('needsLoad', (e) => {
         const slide = e.target.closest('.image-slide');
-        if (slide) loadImageForSlide(slide);
+        if (!slide) return;
+        // Skip if this slide is too far from the current position.
+        // The IntersectionObserver's 100px rootMargin fires for slides the user
+        // scrolls past quickly — this guard prevents loading content for them.
+        const slideIndex = parseInt(slide.dataset.index, 10);
+        if (Math.abs(slideIndex - state.currentIndex) > IMAGE_POOL_BUFFER) return;
+        loadImageForSlide(slide);
     });
     
     // Load initial data
@@ -662,6 +670,13 @@ function showNoImages() {
 function loadImageForSlide(slide, isPriorityImage = false, isNextSlide = false, isPreload = false) {
     const src = slide.dataset.src;
     if (!src) return;
+
+    // Second-line distance guard: skip if slide is too far from current position.
+    // isPriorityImage bypasses this so initial page load and mode transitions always work.
+    if (!isPriorityImage) {
+        const slideIndex = parseInt(slide.dataset.index, 10);
+        if (Math.abs(slideIndex - state.currentIndex) > IMAGE_POOL_BUFFER) return;
+    }
     
     if (isVideoUrl(src)) {
         loadVideoForSlide(slide, src, false, isPriorityImage, isNextSlide);
@@ -981,7 +996,8 @@ function prioritizeFirstImage(priorityIndex = 0) {
     // Preload images ahead only (not behind)
     const preloadCount = getPreloadCount();
     if (preloadCount > 0) {
-        sequentialPreload(priorityIndex, 1, preloadCount, true);  // Ahead only
+        const gen = getScrollGeneration();
+        sequentialPreload(priorityIndex, 1, preloadCount, true, gen);  // Ahead only
     }
 }
 
@@ -992,7 +1008,10 @@ function prioritizeFirstImage(priorityIndex = 0) {
  * @param max - Maximum number of images to preload in each direction
  * @param ahead - True to preload ahead, false to preload behind
  */
-function sequentialPreload(centerIndex, current, max, ahead = true) {
+function sequentialPreload(centerIndex, current, max, ahead = true, generation = 0) {
+    // Guard: abort if user has scrolled to a new slide since this chain started
+    if (generation !== getScrollGeneration()) return;
+
     if (current > max) return;
     
     // Re-check in case the setting changed while a setTimeout was pending
@@ -1005,7 +1024,7 @@ function sequentialPreload(centerIndex, current, max, ahead = true) {
     if (preloadIndex < 0 || preloadIndex >= state.images.length) {
         // Continue to next iteration
         setTimeout(() => {
-            sequentialPreload(centerIndex, current + 1, max, ahead);
+            sequentialPreload(centerIndex, current + 1, max, ahead, generation);
         }, 150);
         return;
     }
@@ -1075,7 +1094,7 @@ function sequentialPreload(centerIndex, current, max, ahead = true) {
     }
     
     setTimeout(() => {
-        sequentialPreload(centerIndex, current + 1, max, ahead);
+        sequentialPreload(centerIndex, current + 1, max, ahead, generation);
     }, 150);
 }
 
