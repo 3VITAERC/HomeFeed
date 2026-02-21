@@ -14,6 +14,7 @@ A TikTok-style vertical scrolling image viewer for your local photos. Scroll thr
 - **Trash/Mark for Deletion** - Mark photos for deletion via menu, review and batch delete
 - **Performance optimized** - HTTP caching, image list caching, and video posters.
 - **Auto-Advance Mode** - Auto-scroll when video ends or after a configurable delay for photos
+- **Pull-to-Refresh** - Drag down on the top nav bar to refresh without losing your place (perfect for PWA/home-screen users)
 - **Optional Authentication** - Password protection for exposing the app remotely
 
 

@@ -393,6 +393,9 @@ function setupEventListeners() {
     if (autoAdvanceIndicator) {
         autoAdvanceIndicator.addEventListener('click', toggleAutoAdvanceOff);
     }
+    
+    // Pull-to-refresh gesture on the top nav bar
+    setupPullToRefresh();
 }
 
 /**
@@ -2940,6 +2943,214 @@ function scrollToImage(index, behavior = null) {
     }
     
     slide.scrollIntoView({ behavior });
+}
+
+// ============ Pull-to-Refresh ============
+
+/**
+ * Pull-to-refresh gesture on the top nav bar.
+ * Dragging the nav down reveals a tip indicator; releasing past the
+ * threshold triggers softRefreshImages().
+ */
+function setupPullToRefresh() {
+    const navEl  = document.getElementById('topNav');
+    const tipEl  = document.getElementById('pullRefreshTip');
+    const textEl = document.getElementById('pullRefreshText');
+    if (!navEl || !tipEl || !textEl) return;
+
+    const THRESHOLD    = 80;   // px of real drag needed to trigger
+    const MAX_DRAG     = 110;  // max visual translation of the nav
+    const DAMPING      = 0.55; // rubber-band factor
+
+    let startY        = 0;
+    let startX        = 0;
+    let isDragging    = false;
+    let isVertical    = null;  // null = undecided, true = vertical, false = horizontal
+    let thresholdMet  = false;
+    let currentDelta  = 0;
+
+    function resetDrag() {
+        isDragging   = false;
+        isVertical   = null;
+        thresholdMet = false;
+        currentDelta = 0;
+    }
+
+    function applySnapBack() {
+        // Add transition class, then clear transform
+        navEl.classList.add('snap-back');
+        tipEl.classList.add('snap-back');
+
+        navEl.style.transform = '';
+        tipEl.style.top       = '-52px';
+        tipEl.style.opacity   = '0';
+        tipEl.classList.remove('threshold-met');
+        textEl.textContent    = 'Pull to refresh';
+
+        const cleanup = () => {
+            navEl.classList.remove('snap-back');
+            tipEl.classList.remove('snap-back');
+            navEl.removeEventListener('transitionend', cleanup);
+        };
+        navEl.addEventListener('transitionend', cleanup, { once: true });
+        // Safety timeout in case transitionend doesn't fire
+        setTimeout(cleanup, 400);
+    }
+
+    navEl.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        startY = e.touches[0].clientY;
+        startX = e.touches[0].clientX;
+        isDragging   = true;
+        isVertical   = null;
+        thresholdMet = false;
+        currentDelta = 0;
+    }, { passive: true });
+
+    navEl.addEventListener('touchmove', (e) => {
+        if (!isDragging || e.touches.length !== 1) return;
+
+        const dy = e.touches[0].clientY - startY;
+        const dx = e.touches[0].clientX - startX;
+
+        // Decide axis on first movement > 4px
+        if (isVertical === null && Math.max(Math.abs(dy), Math.abs(dx)) > 4) {
+            isVertical = Math.abs(dy) > Math.abs(dx);
+        }
+
+        // Only handle downward vertical pulls
+        if (isVertical !== true || dy <= 0) {
+            if (isVertical === false || dy <= 0) resetDrag();
+            return;
+        }
+
+        currentDelta = dy;
+
+        // Rubber-band: drag slows as it approaches MAX_DRAG
+        const progress   = dy / MAX_DRAG;
+        const visualDrag = MAX_DRAG * (1 - Math.exp(-progress)) * (MAX_DRAG / dy) * dy * DAMPING;
+        const clamped    = Math.min(visualDrag, MAX_DRAG);
+
+        // Move nav downward
+        navEl.style.transform = `translateY(${clamped}px)`;
+
+        // Reveal tip from above (starts hidden at -52px, moves down with drag)
+        const tipTop = -52 + clamped * 0.85;
+        tipEl.style.top     = `${tipTop}px`;
+        tipEl.style.opacity = Math.min(clamped / 35, 1).toString();
+
+        // Threshold state toggle
+        const newThreshold = dy >= THRESHOLD;
+        if (newThreshold !== thresholdMet) {
+            thresholdMet = newThreshold;
+            tipEl.classList.toggle('threshold-met', thresholdMet);
+            textEl.textContent = thresholdMet ? 'Release to refresh' : 'Pull to refresh';
+
+            // Subtle haptic nudge when threshold is crossed (supported browsers/PWA)
+            if (thresholdMet && navigator.vibrate) navigator.vibrate(10);
+        }
+    }, { passive: true });
+
+    navEl.addEventListener('touchend', () => {
+        if (!isDragging) return;
+        const doRefresh = thresholdMet;
+        resetDrag();
+        applySnapBack();
+        if (doRefresh) softRefreshImages();
+    });
+
+    navEl.addEventListener('touchcancel', () => {
+        if (!isDragging) return;
+        resetDrag();
+        applySnapBack();
+    });
+}
+
+/**
+ * Soft-refresh: re-fetches image data while preserving all current state.
+ * Used by pull-to-refresh. No hard page reload.
+ *
+ * Preserves:
+ *   - Current position (finds same image URL in new list)
+ *   - Active view mode (folder / favorites / trash / combined)
+ *   - Sort order
+ *   - Shuffle setting and order (new images appended, removed images dropped)
+ */
+async function softRefreshImages() {
+    const savedImageSrc   = state.images[state.currentIndex] ?? null;
+    const savedIndex      = state.currentIndex;
+
+    showLoadingOverlay();
+
+    try {
+        // --- 1. Re-fetch images for the current mode ---
+        let freshImages;
+        if (state.showingTrashOnly) {
+            freshImages = await API.getTrashImages(state.currentSortOrder);
+        } else if (state.showingFavoritesOnly && state.showingFolderOnly && state.currentFolderFilter) {
+            freshImages = await API.getFavoriteImagesByFolder(state.currentFolderFilter);
+            if (state.currentSortOrder === 'oldest') freshImages = [...freshImages].reverse();
+        } else if (state.showingFavoritesOnly) {
+            freshImages = await API.getFavoriteImages(state.currentSortOrder);
+        } else if (state.showingFolderOnly && state.currentFolderFilter) {
+            freshImages = await API.getImagesByFolder(state.currentFolderFilter, state.currentSortOrder);
+        } else {
+            freshImages = await API.getImages(state.currentSortOrder);
+        }
+
+        // --- 2. Re-fetch favorites & trash (in parallel) ---
+        const [favData, trashData] = await Promise.all([
+            API.getFavorites(),
+            API.getTrash(),
+        ]);
+        state.favorites = new Set(favData.favorites.map(url => extractPath(url)));
+        state.trash     = new Set(trashData.trash.map(url => extractPath(url)));
+
+        // --- 3. Merge with existing shuffle order (if shuffle is active) ---
+        if (state.shuffleEnabled && state.images.length > 0) {
+            const freshSet   = new Set(freshImages);
+            const currentSet = new Set(state.images);
+
+            // Keep existing order for images that are still present
+            const preserved = state.images.filter(img => freshSet.has(img));
+
+            // Append images that are new (not seen before)
+            const added = freshImages.filter(img => !currentSet.has(img));
+            if (added.length > 0) shuffleArray(added);
+
+            freshImages = [...preserved, ...added];
+
+            // Update unshuffled backup too (fetch base list again)
+            // Only if we're in normal mode (not folder/favorites/trash)
+            if (!state.showingFavoritesOnly && !state.showingTrashOnly && !state.showingFolderOnly) {
+                API.getImages(state.currentSortOrder).then(base => {
+                    state.unshuffledImages = base;
+                }).catch(() => {});
+            }
+        }
+
+        state.images = freshImages;
+
+        // --- 4. Find the position to scroll back to ---
+        let targetIndex = savedImageSrc ? freshImages.indexOf(savedImageSrc) : -1;
+        if (targetIndex === -1) {
+            // Image removed or not found — clamp to valid range
+            targetIndex = Math.min(savedIndex, freshImages.length - 1);
+        }
+        if (targetIndex < 0) targetIndex = 0;
+        state.currentIndex = targetIndex;
+
+        // --- 5. Rebuild UI ---
+        buildSlides(targetIndex);
+        prioritizeFirstImage(targetIndex);
+        updateFilterBadge();
+        updateUI();
+        scrollToImage(targetIndex, 'instant');
+
+    } catch (error) {
+        console.error('[softRefreshImages] Failed:', error);
+        hideLoadingOverlay();
+    }
 }
 
 // ============ Start Application ============
