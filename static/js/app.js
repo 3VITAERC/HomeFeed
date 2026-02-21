@@ -2962,6 +2962,14 @@ function setupPullToRefresh() {
     const MAX_DRAG     = 110;  // max visual translation of the nav
     const DAMPING      = 0.55; // rubber-band factor
 
+    // Get safe-area-inset-top for PWA mode (returns 0 if not supported)
+    const getSafeAreaTop = () => {
+        const style = getComputedStyle(document.documentElement);
+        const inset = style.getPropertyValue('--safe-area-inset-top') || 
+                      style.getPropertyValue('padding-top') || '0px';
+        return parseInt(inset, 10) || 0;
+    };
+
     let startY        = 0;
     let startX        = 0;
     let isDragging    = false;
@@ -2982,7 +2990,9 @@ function setupPullToRefresh() {
         tipEl.classList.add('snap-back');
 
         navEl.style.transform = '';
-        tipEl.style.top       = '-52px';
+        // Account for safe-area-inset in snap-back position
+        const safeAreaTop = getSafeAreaTop();
+        tipEl.style.top       = `${-52 + safeAreaTop}px`;
         tipEl.style.opacity   = '0';
         tipEl.classList.remove('threshold-met');
         textEl.textContent    = 'Pull to refresh';
@@ -3034,8 +3044,12 @@ function setupPullToRefresh() {
         // Move nav downward
         navEl.style.transform = `translateY(${clamped}px)`;
 
-        // Reveal tip from above (starts hidden at -52px, moves down with drag)
-        const tipTop = -52 + clamped * 0.85;
+        // Reveal tip from above (starts hidden, moves down with drag)
+        // In PWA mode with notch, the tip's CSS sets top to (-52px + safe-area-inset-top)
+        // We need to animate from that base position, so we add safe-area-inset to the calculation
+        const safeAreaTop = getSafeAreaTop();
+        const tipStartPos = -52 + safeAreaTop;  // Hidden position (accounting for notch)
+        const tipTop = tipStartPos + clamped * 0.85;
         tipEl.style.top     = `${tipTop}px`;
         tipEl.style.opacity = Math.min(clamped / 35, 1).toString();
 

@@ -304,12 +304,39 @@ html, body {
     background: #fff;
     border-radius: 50%;
     opacity: 1; /* Always visible for playhead indication */
-    transition: opacity 0.15s ease;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+/* Larger invisible touch target for mobile */
+.video-progress-handle::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    /* Invisible but touchable */
 }
 
 .video-progress-container:hover .video-progress-handle,
 .video-progress-container:active .video-progress-handle {
     opacity: 1;
+}
+
+/* Slightly larger handle on touch devices for better visibility */
+@media (hover: none) and (pointer: coarse) {
+    .video-progress-handle {
+        width: 12px;
+        height: 12px;
+        right: -8px;
+    }
+    
+    .video-progress-handle::before {
+        width: 44px;
+        height: 44px;
+    }
 }
 
 /* Time display - inline with progress bar */
@@ -556,7 +583,7 @@ html, body {
 
 .top-nav {
     position: fixed;
-    top: 16px;
+    top: 3px;
     left: 16px;
     right: 16px;
     height: 44px;
@@ -566,7 +593,7 @@ html, body {
 /* Safe area support */
 @supports (padding-top: env(safe-area-inset-top)) {
     .top-nav {
-        top: calc(16px + env(safe-area-inset-top));
+        top: calc(3px + env(safe-area-inset-top));
         left: calc(16px + env(safe-area-inset-left));
         right: calc(16px + env(safe-area-inset-right));
     }
@@ -801,7 +828,7 @@ html, body {
 /* Auto-Advance Indicator */
 .auto-advance-indicator {
     position: fixed;
-    top: 70px;
+    top: 57px;
     right: 12px;
     width: 36px;
     height: 36px;
@@ -815,6 +842,13 @@ html, body {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     transition: background 0.2s, transform 0.2s;
+}
+
+/* Safe area support for PWA mode - keeps indicator below top-nav */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .auto-advance-indicator {
+        top: calc(57px + env(safe-area-inset-top));
+    }
 }
 
 .auto-advance-indicator:hover {
@@ -2842,6 +2876,13 @@ html, body {
     
     /* Transition used only for snap-back animation */
     transition: none;
+}
+
+/* Safe area support for PWA mode - positions tip below notch */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .pull-refresh-tip {
+        top: calc(-52px + env(safe-area-inset-top));
+    }
 }
 
 .pull-refresh-tip.snap-back {
