@@ -2138,6 +2138,16 @@ html, body {
     color: white;
 }
 
+/* Non-danger confirm button (for actions like clearing cache) */
+.delete-confirm-btn:not(.danger):not(.cancel) {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.delete-confirm-btn:not(.danger):not(.cancel):hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
 /* ============ Settings Trash Section ============ */
 
 .settings-trash-section {

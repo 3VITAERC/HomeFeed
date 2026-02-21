@@ -57,6 +57,9 @@ let autoAdvanceTimer = null;
 // Loading overlay failsafe timeout
 let loadingFailsafeTimeout = null;
 
+// Pending confirmation action (for reusable confirm modal)
+let pendingConfirmAction = null;
+
 // ============ Initialization ============
 
 /**
@@ -267,7 +270,7 @@ function setupEventListeners() {
     if (viewTrashBtn) viewTrashBtn.addEventListener('click', viewTrash);
     if (emptyTrashBtn) emptyTrashBtn.addEventListener('click', confirmEmptyTrash);
     if (deleteCancelBtn) deleteCancelBtn.addEventListener('click', hideDeleteConfirm);
-    if (deleteConfirmBtn) deleteConfirmBtn.addEventListener('click', executeEmptyTrash);
+    if (deleteConfirmBtn) deleteConfirmBtn.addEventListener('click', handleConfirmAction);
     
     // Cache optimization toggles - set up once during initialization
     const thumbnailToggle = document.getElementById('toggleThumbnailCache');
@@ -1773,29 +1776,65 @@ async function exitTrashMode() {
 }
 
 /**
- * Confirm empty trash
+ * Show a generalized confirmation modal
+ * @param {Object} options - Modal options
+ * @param {string} options.title - Modal title
+ * @param {string} options.message - Confirmation message
+ * @param {string} [options.confirmText='Confirm'] - Confirm button text
+ * @param {string} [options.cancelText='Cancel'] - Cancel button text
+ * @param {Function} options.onConfirm - Callback to execute on confirm
+ * @param {boolean} [options.danger=true] - Whether to style confirm button as dangerous (red)
  */
-function confirmEmptyTrash() {
-    if (deleteConfirmModal) {
-        deleteConfirmMessage.textContent = `Delete ${state.trash.size} images permanently?`;
-        deleteConfirmModal.style.display = 'flex';
-    }
+function showConfirmModal(options) {
+    const { title, message, confirmText = 'Confirm', cancelText = 'Cancel', onConfirm, danger = true } = options;
+    
+    pendingConfirmAction = onConfirm;
+    
+    // Update modal content
+    const titleEl = deleteConfirmModal.querySelector('h3');
+    if (titleEl) titleEl.textContent = title;
+    deleteConfirmMessage.textContent = message;
+    deleteConfirmBtn.textContent = confirmText;
+    deleteCancelBtn.textContent = cancelText;
+    
+    // Toggle danger styling
+    deleteConfirmBtn.classList.toggle('danger', danger);
+    
+    deleteConfirmModal.style.display = 'flex';
 }
 
 /**
- * Execute empty trash
+ * Handle confirm button click - executes pending action
  */
-async function executeEmptyTrash() {
-    try {
-        await API.emptyTrash();
-        state.trash.clear();
-        hideDeleteConfirm();
-        hideTrashModal();
-        exitTrashMode();
-        
-    } catch (error) {
-        console.error('Failed to empty trash:', error);
+async function handleConfirmAction() {
+    if (pendingConfirmAction) {
+        try {
+            await pendingConfirmAction();
+        } catch (error) {
+            console.error('Confirm action failed:', error);
+        }
+        pendingConfirmAction = null;
     }
+    hideDeleteConfirm();
+}
+
+/**
+ * Confirm empty trash
+ */
+function confirmEmptyTrash() {
+    showConfirmModal({
+        title: 'Delete Photos Permanently?',
+        message: `This will permanently delete ${state.trash.size} photo${state.trash.size !== 1 ? 's' : ''} from your device. This action cannot be undone.`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        danger: true,
+        onConfirm: async () => {
+            await API.emptyTrash();
+            state.trash.clear();
+            hideTrashModal();
+            exitTrashMode();
+        }
+    });
 }
 
 // ============ Modals ============
@@ -2005,17 +2044,18 @@ async function loadSettingsModalData() {
         // Setup clear cache button
         const clearCacheBtn = document.getElementById('clearCacheBtn');
         if (clearCacheBtn) {
-            clearCacheBtn.onclick = async () => {
-                // Show confirmation dialog
-                if (!confirm('Are you sure you want to clear all cached thumbnails? This will free up disk space but images will need to be re-cached on next load.')) {
-                    return;
-                }
-                try {
-                    await API.clearCache();
-                    loadSettingsModalData();
-                } catch (error) {
-                    console.error('Failed to clear cache:', error);
-                }
+            clearCacheBtn.onclick = () => {
+                showConfirmModal({
+                    title: 'Clear Cache?',
+                    message: 'This will delete all cached thumbnails. Images will need to be re-cached on next load.',
+                    confirmText: 'Clear Cache',
+                    cancelText: 'Cancel',
+                    danger: false,
+                    onConfirm: async () => {
+                        await API.clearCache();
+                        loadSettingsModalData();
+                    }
+                });
             };
         }
         
