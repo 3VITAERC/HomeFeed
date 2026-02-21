@@ -615,7 +615,7 @@ html, body {
     justify-content: center;
     cursor: pointer;
     padding: 0;
-    opacity: 0.7;
+    opacity: 1;
     transition: opacity 0.2s;
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.02));
 }
@@ -626,8 +626,8 @@ html, body {
 }
 
 .top-nav-filter svg {
-    width: 20px;
-    height: 20px;
+    width: 23px;
+    height: 23px;
 }
 
 /* Dropdown */
@@ -810,7 +810,7 @@ html, body {
     justify-content: center;
     cursor: pointer;
     padding: 0;
-    opacity: 0.7;
+    opacity: 1;
     transition: opacity 0.2s;
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.02));
 }
@@ -821,8 +821,8 @@ html, body {
 }
 
 .top-nav-search svg {
-    width: 20px;
-    height: 20px;
+    width: 23px;
+    height: 23px;
 }
 
 /* Auto-Advance Indicator */
