@@ -293,6 +293,8 @@ function _activateMedia(slide) {
  * Remove all child elements from a slide, aborting any in-progress network loads first.
  * After clearing, the slide returns to an empty shell so needsLoad can re-trigger
  * the next time the user scrolls to it.
+ * 
+ * Handles: VIDEO, IMG (including video-poster class), and any other children.
  */
 function _clearSlideContent(slide) {
     const children = Array.from(slide.children);
@@ -302,6 +304,7 @@ function _clearSlideContent(slide) {
             child.removeAttribute('src');
             child.load(); // forces the browser to cancel any pending range request
         } else if (child.tagName === 'IMG') {
+            // Handles both regular images and video-poster elements
             child.src = ''; // cancels any in-flight image download
         }
         child.remove();
@@ -311,6 +314,7 @@ function _clearSlideContent(slide) {
 /**
  * Deactivate media on a slide:
  *   – Video → pause; abort in-flight HTTP range request if still downloading
+ *   – Video poster → abort download if still loading
  *   – GIF   → freeze; abort download if still loading
  *   – Image → abort download if still loading
  *
@@ -326,6 +330,12 @@ function _deactivateMedia(slide) {
 
     if (isVideoUrl(src)) {
         const video = slide.querySelector('video');
+        const poster = slide.querySelector('.video-poster');
+        
+        // Check if video or poster is still loading
+        const videoLoading = video && video.networkState === HTMLMediaElement.NETWORK_LOADING;
+        const posterLoading = poster && !poster.complete;
+        
         if (video) {
             video.pause();
 
@@ -339,12 +349,15 @@ function _deactivateMedia(slide) {
             // NETWORK_LOADING (2) means the browser is actively fetching data.
             // Abort the request by clearing src — this frees bandwidth immediately.
             // The slide becomes an empty shell so needsLoad re-triggers on revisit.
-            if (video.networkState === HTMLMediaElement.NETWORK_LOADING) {
+            if (videoLoading || posterLoading) {
                 _clearSlideContent(slide);
             } else {
                 // Already idle or fully loaded — just stop any future buffering
                 video.preload = 'none';
             }
+        } else if (posterLoading) {
+            // Video not created yet but poster is loading
+            _clearSlideContent(slide);
         }
     }
 

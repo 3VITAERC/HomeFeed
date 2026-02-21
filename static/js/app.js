@@ -758,9 +758,11 @@ function loadGifForSlide(slide, src, isPriorityImage = false, isPreload = false)
  * Uses video poster if video_poster_cache is enabled
  * 
  * Loading strategy:
- * 1. Show blurred poster immediately (if enabled)
+ * 1. If poster enabled, start loading poster first
  * 2. Load video with appropriate preload strategy
- * 3. When video is ready, crossfade from poster to video
+ * 3. When poster is used, video has no opacity transition (visible immediately behind poster)
+ * 4. Only the poster fades out when video is ready
+ * 5. Hide loading overlay when EITHER poster or video is ready (for priority images)
  * 
  * @param {HTMLElement} slide - The slide element
  * @param {string} src - The video source URL
@@ -806,41 +808,83 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
     let hasLoaded = false;
     let loadTimeout = null;
     
+    // Determine if we're using a poster
+    const usePoster = state.optimizations.video_poster_cache && !isConvertedGif;
+    
+    // If using poster, add 'with-poster' class to video
+    // This makes the video visible immediately (no opacity transition)
+    // so it renders behind the poster, and only the poster fades out
+    if (usePoster) {
+        video.classList.add('with-poster');
+    }
+    
+    // Track poster state for coordinated crossfade
+    let posterElement = null;
+    let posterReady = false;
+    let videoReady = false;
+    let loadingOverlayHidden = false;
+    
+    // Helper: hide poster when both poster is visible AND video is ready
+    const maybeHidePoster = () => {
+        if (posterReady && videoReady && posterElement) {
+            posterElement.classList.add('hidden');
+            // Remove poster after transition completes
+            setTimeout(() => {
+                if (posterElement && posterElement.parentNode) {
+                    posterElement.remove();
+                }
+            }, 300);
+        }
+    };
+    
+    // Helper: hide loading overlay (only once)
+    const maybeHideLoadingOverlay = () => {
+        if (isPriorityImage && !loadingOverlayHidden) {
+            loadingOverlayHidden = true;
+            hideLoadingOverlay();
+        }
+    };
+    
     // Load poster image first if video poster cache is enabled
-    if (state.optimizations.video_poster_cache && !isConvertedGif) {
+    if (usePoster) {
         const path = extractPath(src);
         const posterUrl = `/video-poster?path=${encodeURIComponent(path)}`;
         
         // Create poster image element
-        const poster = document.createElement('img');
-        poster.className = 'video-poster';
+        posterElement = document.createElement('img');
+        posterElement.className = 'video-poster';
         
         // Priority images get high fetch priority and eager loading
         if (isPriorityImage) {
-            poster.fetchPriority = 'high';
-            poster.loading = 'eager';
+            posterElement.fetchPriority = 'high';
+            posterElement.loading = 'eager';
         } else {
-            poster.loading = 'lazy';
+            posterElement.loading = 'lazy';
         }
         
-        poster.onload = function() {
-            // Add loaded class to trigger unblur animation
+        posterElement.onload = function() {
+            // Add loaded class to trigger fade-in
             this.classList.add('loaded');
+            posterReady = true;
+            
             // Hide loading overlay when poster loads (priority image only)
-            if (isPriorityImage) {
-                hideLoadingOverlay();
-            }
+            maybeHideLoadingOverlay();
+            
+            // Check if we should hide poster (video might already be ready)
+            maybeHidePoster();
+            
             console.log(`[Video] Poster loaded for: ${path.substring(0, 50)}...`);
         };
         
-        poster.onerror = function() {
+        posterElement.onerror = function() {
             // Poster failed to load, remove it and log
             console.warn(`[Video] Poster failed to load for: ${path.substring(0, 50)}...`);
+            posterElement = null;
             this.remove();
         };
         
-        poster.src = posterUrl;
-        slide.appendChild(poster);
+        posterElement.src = posterUrl;
+        slide.appendChild(posterElement);
     }
     
     // Set up video load timeout (30 seconds - slow networks need more time)
@@ -869,21 +913,20 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
         hasLoaded = true;
         if (loadTimeout) clearTimeout(loadTimeout);
         
-        this.classList.add('loaded');
+        // Only add 'loaded' class if NOT using poster
+        // (with-poster videos are already visible)
+        if (!usePoster) {
+            this.classList.add('loaded');
+        }
+        videoReady = true;
         console.log(`[Video] Data loaded for: ${src.substring(0, 50)}...`);
         
-        // Hide loading overlay when video loads (priority image only, if no poster)
-        if (isPriorityImage && !state.optimizations.video_poster_cache) {
-            hideLoadingOverlay();
-        }
+        // Hide loading overlay when video loads (priority image only)
+        // This handles the case where poster is disabled or failed to load
+        maybeHideLoadingOverlay();
         
-        // Hide poster with fade (use class for CSS transition)
-        const poster = slide.querySelector('.video-poster');
-        if (poster) {
-            poster.classList.add('hidden');
-            // Remove poster after transition completes
-            setTimeout(() => poster.remove(), 300);
-        }
+        // Hide poster with coordinated crossfade
+        maybeHidePoster();
         
         // Play/pause trick for next-slide videos:
         // Forces the browser to decode and render the first frame,
@@ -913,9 +956,7 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
         if (loadTimeout) clearTimeout(loadTimeout);
         
         // Hide loading overlay on error too
-        if (isPriorityImage) {
-            hideLoadingOverlay();
-        }
+        maybeHideLoadingOverlay();
         
         // Get error details
         let errorMsg = 'Video unavailable';
@@ -951,8 +992,10 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
             slide.appendChild(errorDiv);
             
             // Remove poster if video failed
-            const poster = slide.querySelector('.video-poster');
-            if (poster) poster.remove();
+            if (posterElement) {
+                posterElement.remove();
+                posterElement = null;
+            }
         }
     };
     

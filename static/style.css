@@ -136,22 +136,31 @@ html, body {
     height: auto;                      /* Match video height behavior */
     max-height: 100%;                  /* Match video max-height */
     object-fit: contain;
-    z-index: 1;
+    z-index: 3;                        /* Above video - poster is on top */
     opacity: 0;
-    filter: blur(20px);                /* Start blurred for loading effect */
-    transition: opacity 0.3s ease, filter 0.8s ease 0.1s;  /* Delay unblur slightly */
+    filter: blur(15px);                /* Start blurred for loading effect */
+    transition: opacity 0.3s ease, filter 0.5s ease;  /* Separate timing for smooth unblur */
 }
 
 .image-slide .video-poster.loaded {
-    opacity: 1;
+    opacity: 1;                        /* Fade in when loaded */
     filter: blur(0);                   /* Unblur when loaded */
 }
 
 .image-slide .video-poster.hidden {
     opacity: 0;                        /* Fade out when video is ready */
+    pointer-events: none;              /* Prevent interaction during fade-out */
+    /* Keep blur at 0 during fade-out - don't re-blur */
 }
 
-/* Video needs higher z-index for crossfade with poster */
+/* Video with poster: no opacity transition, visible immediately behind poster */
+.image-slide video.with-poster {
+    opacity: 1;                        /* Always visible behind poster */
+    transition: none;                  /* No opacity transition */
+    z-index: 2;                        /* Below poster */
+}
+
+/* Video without poster: normal fade-in behavior */
 .image-slide video {
     z-index: 2;
 }
