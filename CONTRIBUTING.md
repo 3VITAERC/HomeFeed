@@ -1,4 +1,4 @@
-# Contributing to LocalFeed
+# Contributing to HomeFeed
 
 Thanks for your interest in contributing! This project is a simple, personal photo viewer that I built for fun, and I'm happy to accept improvements.
 
@@ -29,8 +29,8 @@ Feel free to open an issue to discuss new features before implementing them. Thi
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/LocalFeed.git
-cd LocalFeed
+git clone https://github.com/YOUR_USERNAME/HomeFeed.git
+cd HomeFeed
 
 # Install dependencies
 pip install -r requirements.txt

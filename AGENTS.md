@@ -2,7 +2,7 @@
 
 > **Note:** This file provides context for AI assistants (Claude, Cursor, etc.) working on this codebase. If you're a human contributor, you can skip this file - see [CONTRIBUTING.md](CONTRIBUTING.md) instead.
 
-AI assistant context for the LocalFeed codebase.
+AI assistant context for the HomeFeed codebase.
 
 ## Project Overview
 
@@ -11,7 +11,7 @@ A TikTok-style vertical scrolling image viewer for local photos. Flask backend +
 ## Project Structure (Refactored)
 
 ```
-LocalFeed/
+HomeFeed/
 ├── server.py              # Entry point (~50 lines) - creates Flask app
 ├── app/
 │   ├── __init__.py        # Flask app factory
@@ -84,18 +84,18 @@ PORT=9000 python server.py
 
 ## Authentication
 
-LocalFeed supports optional password protection. When enabled, all routes require authentication.
+HomeFeed supports optional password protection. When enabled, all routes require authentication.
 
 ### Enabling Authentication
 
-Set the `LOCALFEED_PASSWORD` environment variable:
+Set the `HOMEFEED_PASSWORD` environment variable:
 
 ```bash
 # One-time run
-LOCALFEED_PASSWORD=yourpassword python server.py
+HOMEFEED_PASSWORD=yourpassword python server.py
 
 # Or export for persistence
-export LOCALFEED_PASSWORD=yourpassword
+export HOMEFEED_PASSWORD=yourpassword
 python server.py
 ```
 
@@ -103,7 +103,7 @@ python server.py
 
 1. **Session-based auth:** Uses Flask-Session with filesystem storage (`.flask_session/`)
 2. **CSRF protection:** Login form includes CSRF token
-3. **Optional:** Without `LOCALFEED_PASSWORD` set, the app has no authentication
+3. **Optional:** Without `HOMEFEED_PASSWORD` set, the app has no authentication
 4. **Session expiry:** Sessions expire when the browser closes (not persistent)
 
 ### Auth Endpoints
@@ -124,7 +124,7 @@ python server.py
 - **`app/__init__.py`** - `before_request` hook checks auth for all routes
 
 The `before_request` hook in `app/__init__.py` intercepts all requests and:
-1. Skips auth check if `LOCALFEED_PASSWORD` is not set
+1. Skips auth check if `HOMEFEED_PASSWORD` is not set
 2. Allows auth-related routes (`/login`, `/api/auth/*`)
 3. Checks session for authenticated state
 4. Redirects to login page or returns 401 for API requests

@@ -1,8 +1,8 @@
 """
-Authentication service for LocalFeed.
+Authentication service for HomeFeed.
 
 Provides password-based authentication using Flask-HTTPAuth with session persistence.
-Password is set via the LOCALFEED_PASSWORD environment variable.
+Password is set via the HOMEFEED_PASSWORD environment variable.
 """
 
 import os
@@ -21,12 +21,12 @@ CSRF_TOKEN_KEY = 'csrf_token'
 
 def is_auth_enabled():
     """Check if authentication is enabled (password is configured)."""
-    return bool(os.environ.get('LOCALFEED_PASSWORD'))
+    return bool(os.environ.get('HOMEFEED_PASSWORD'))
 
 
 def get_password():
     """Get the configured password from environment variable."""
-    return os.environ.get('LOCALFEED_PASSWORD', '')
+    return os.environ.get('HOMEFEED_PASSWORD', '')
 
 
 def is_authenticated():

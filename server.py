@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LocalFeed - TikTok-style image viewer
+HomeFeed - TikTok-style image viewer
 Entry point for the Flask server.
 """
 
@@ -41,7 +41,7 @@ def get_port():
     2. Environment variable: PORT=9000
     3. Default: 7123
     """
-    parser = argparse.ArgumentParser(description='LocalFeed - TikTok-style image viewer')
+    parser = argparse.ArgumentParser(description='HomeFeed - TikTok-style image viewer')
     parser.add_argument('--port', '-p', type=int, help='Port to run the server on (default: 7123)')
     parser.add_argument('--debug', '-d', action='store_true', help='Enable debug mode')
     args = parser.parse_args()
@@ -65,7 +65,7 @@ def print_startup_info(port):
     local_ip = get_local_ip()
     
     print("=" * 50)
-    print("  LocalFeed")
+    print("  HomeFeed")
     print("  TikTok-style image viewer")
     print("=" * 50)
     print()

@@ -1,5 +1,5 @@
 """
-LocalFeed - Flask Application Factory.
+HomeFeed - Flask Application Factory.
 """
 
 import os
@@ -59,7 +59,7 @@ def create_app(config=None):
         app.config.update(config)
     
     # Session configuration for authentication
-    app.config['SECRET_KEY'] = os.environ.get('LOCALFEED_SECRET_KEY', os.urandom(24).hex())
+    app.config['SECRET_KEY'] = os.environ.get('HOMEFEED_SECRET_KEY', os.urandom(24).hex())
     app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
     app.config['SESSION_FILE_DIR'] = os.path.join(project_root, '.flask_session')

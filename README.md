@@ -1,4 +1,6 @@
-# 📸 LocalFeed
+# 📸 HomeFeed
+
+**Scroll your life, not someone else's.**
 
 A TikTok-style vertical scrolling image viewer for your local photos. Scroll through images, GIFs, m4vs, and MP4s with smooth snap scrolling. Quickly delete or like photos for easy pruning unwanted photos or reminising on old memories.
 
@@ -58,7 +60,7 @@ waitress-serve --port=7123 server:app
 You'll see output like:
 ```
 ==================================================
-  LocalFeed
+  HomeFeed
   TikTok-style image viewer
 ==================================================
 
@@ -89,22 +91,22 @@ Click "View Images" and scroll through your photos TikTok-style!
 
 ## Authentication (Optional)
 
-LocalFeed supports optional password protection. This is useful when exposing the app remotely (e.g., through Cloudflare Tunnel, ngrok, etc.).
+HomeFeed supports optional password protection. This is useful when exposing the app remotely (e.g., through Cloudflare Tunnel, ngrok, etc.).
 
 ### Enable Authentication
 
-Set the `LOCALFEED_PASSWORD` environment variable:
+Set the `HOMEFEED_PASSWORD` environment variable:
 
 ```bash
 # One-time run
-LOCALFEED_PASSWORD=yourpassword python server.py
+HOMEFEED_PASSWORD=yourpassword python server.py
 
 # Or export for persistence
-export LOCALFEED_PASSWORD=yourpassword
+export HOMEFEED_PASSWORD=yourpassword
 python server.py
 
 # Production with gunicorn
-LOCALFEED_PASSWORD=yourpassword gunicorn -w 4 -b 0.0.0.0:7123 server:app
+HOMEFEED_PASSWORD=yourpassword gunicorn -w 4 -b 0.0.0.0:7123 server:app
 ```
 
 ### How It Works
@@ -135,7 +137,7 @@ curl -b cookies.txt -c cookies.txt -X POST http://localhost:7123/login \
   -d '{"password":"yourpassword","csrf_token":"TOKEN_HERE"}'
 ```
 
-> **Tip:** Use Cloudflare Access or similar for primary authentication, and LocalFeed's password as a secondary layer.
+> **Tip:** Use Cloudflare Access or similar for primary authentication, and HomeFeed's password as a secondary layer.
 
 ## Usage from iPhone
 
@@ -215,7 +217,7 @@ Videos are optimized for smooth scrolling with several techniques:
 
 ## Cross-Platform Support
 
-LocalFeed works on both **macOS** and **Windows**. The application handles platform-specific path separators automatically:
+HomeFeed works on both **macOS** and **Windows**. The application handles platform-specific path separators automatically:
 
 - **macOS/Linux:** Uses forward slashes (`/Users/name/Pictures`)
 - **Windows:** Uses backslashes (`C:\Users\name\Pictures`)
@@ -251,7 +253,7 @@ Tested on photo libraries up to 10,000.
 ## Project Structure
 
 ```
-LocalFeed/
+HomeFeed/
 ├── server.py              # Entry point - creates Flask app
 ├── requirements.txt       # Python dependencies (flask, gunicorn)
 ├── config.json            # Saved folder paths (gitignored, auto-generated)
