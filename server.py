@@ -8,6 +8,16 @@ import os
 import sys
 import socket
 import argparse
+import logging
+
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s'
+)
+
+logger = logging.getLogger(__name__)
 
 
 # Default port - chosen to avoid common conflicts with 8080, 3000, 5000, etc.
@@ -45,7 +55,7 @@ def get_port():
         try:
             return int(env_port), args.debug
         except ValueError:
-            print(f"Warning: Invalid PORT environment variable '{env_port}', using default")
+            logger.warning("Invalid PORT environment variable '%s', using default", env_port)
     
     return DEFAULT_PORT, args.debug
 

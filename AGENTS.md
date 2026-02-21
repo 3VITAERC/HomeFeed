@@ -234,7 +234,7 @@ def serve_image():
 
 Business logic is extracted into service modules:
 
-- **`data.py`** - Loading/saving JSON files (config, favorites, trash)
+- **`data.py`** - Loading/saving JSON files with thread-safe file locking
 - **`path_utils.py`** - Path validation, normalization, security checks
 - **`image_cache.py`** - Image list caching with TTL
 - **`optimizations.py`** - Thumbnail generation, video poster extraction
@@ -253,6 +253,14 @@ CACHE_TTL = 30  # seconds
 
 - Cache invalidated by TTL (30s) OR folder modification time change
 - `get_all_images()` returns cached list or rescans
+
+### Image List Caching Performance
+
+The image cache has been optimized for large photo libraries:
+
+- **Folder mtime check:** Uses `os.scandir()` to check only the folder itself and immediate subdirectories (one level deep), not a full recursive walk
+- **Single-pass mtime collection:** During folder scan, mtime is collected once and cached in `(path, mtime)` tuples, avoiding double filesystem calls during sorting
+- **Thread-safe writes:** All JSON file saves use `FileLock` to prevent corruption with multiple workers
 
 ### Path Security
 

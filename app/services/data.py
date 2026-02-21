@@ -6,6 +6,7 @@ Handles loading and saving configuration, favorites, and trash data.
 import os
 import json
 from typing import Dict, Any, List
+from filelock import FileLock
 
 from app.config import (
     CONFIG_FILE,
@@ -22,8 +23,11 @@ def load_config() -> Dict[str, Any]:
         Configuration dictionary with 'folders' and 'shuffle' keys
     """
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {'folders': [], 'shuffle': False}
     return {'folders': [], 'shuffle': False}
 
 
@@ -33,8 +37,10 @@ def save_config(config: Dict[str, Any]) -> None:
     Args:
         config: Configuration dictionary to save
     """
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=2)
+    lock = FileLock(CONFIG_FILE + '.lock')
+    with lock:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
 
 
 def get_optimization_settings() -> Dict[str, bool]:
@@ -70,9 +76,12 @@ def load_favorites() -> List[str]:
         List of favorited image paths
     """
     if os.path.exists(FAVORITES_FILE):
-        with open(FAVORITES_FILE, 'r') as f:
-            data = json.load(f)
-            return data.get('favorites', [])
+        try:
+            with open(FAVORITES_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('favorites', [])
+        except (json.JSONDecodeError, IOError):
+            return []
     return []
 
 
@@ -82,8 +91,10 @@ def save_favorites(favorites: List[str]) -> None:
     Args:
         favorites: List of favorited image paths
     """
-    with open(FAVORITES_FILE, 'w') as f:
-        json.dump({'favorites': favorites}, f, indent=2)
+    lock = FileLock(FAVORITES_FILE + '.lock')
+    with lock:
+        with open(FAVORITES_FILE, 'w') as f:
+            json.dump({'favorites': favorites}, f, indent=2)
 
 
 def cleanup_favorites() -> List[str]:
@@ -116,9 +127,12 @@ def load_trash() -> List[str]:
         List of trashed image paths
     """
     if os.path.exists(TRASH_FILE):
-        with open(TRASH_FILE, 'r') as f:
-            data = json.load(f)
-            return data.get('trash', [])
+        try:
+            with open(TRASH_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('trash', [])
+        except (json.JSONDecodeError, IOError):
+            return []
     return []
 
 
@@ -128,8 +142,10 @@ def save_trash(trash: List[str]) -> None:
     Args:
         trash: List of trashed image paths
     """
-    with open(TRASH_FILE, 'w') as f:
-        json.dump({'trash': trash}, f, indent=2)
+    lock = FileLock(TRASH_FILE + '.lock')
+    with lock:
+        with open(TRASH_FILE, 'w') as f:
+            json.dump({'trash': trash}, f, indent=2)
 
 
 def cleanup_trash() -> List[str]:

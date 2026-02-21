@@ -21,6 +21,7 @@ from app.services.path_utils import (
     format_image_url,
     extract_path_from_url,
 )
+from app.services.image_cache import invalidate_cache
 
 
 trash_bp = Blueprint('trash', __name__)
@@ -127,6 +128,9 @@ def empty_trash():
     
     # Also cleanup favorites to remove any deleted files
     cleanup_favorites()
+    
+    # Invalidate image cache so deleted files don't appear
+    invalidate_cache()
     
     return jsonify({
         'success': True,

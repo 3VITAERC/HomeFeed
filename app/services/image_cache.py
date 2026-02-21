@@ -29,7 +29,12 @@ _leaf_folders_cache: List[Dict[str, Any]] = []
 
 
 def get_folder_mtime(folder_path: str) -> float:
-    """Get the most recent modification time of a folder or any file within it.
+    """Get the max mtime of folder and its direct subdirectories.
+    
+    This checks only one level deep (folder + immediate subdirectories),
+    which catches changes in nested subfolders without walking the entire tree.
+    For a folder with 10,000+ photos, this is significantly faster than
+    a full os.walk() which was causing performance issues.
     
     Args:
         folder_path: Path to the folder
@@ -39,26 +44,17 @@ def get_folder_mtime(folder_path: str) -> float:
     """
     if not os.path.isdir(folder_path):
         return 0
-    
-    max_mtime = os.path.getmtime(folder_path)
-    for root, dirs, files in os.walk(folder_path):
-        # Check directory mtimes
-        for d in dirs:
-            try:
-                mtime = os.path.getmtime(os.path.join(root, d))
-                max_mtime = max(max_mtime, mtime)
-            except OSError:
-                pass
-        
-        # Check file mtimes
-        for f in files:
-            try:
-                mtime = os.path.getmtime(os.path.join(root, f))
-                max_mtime = max(max_mtime, mtime)
-            except OSError:
-                pass
-    
-    return max_mtime
+    try:
+        max_mtime = os.path.getmtime(folder_path)
+        for entry in os.scandir(folder_path):
+            if entry.is_dir(follow_symlinks=False):
+                try:
+                    max_mtime = max(max_mtime, entry.stat().st_mtime)
+                except OSError:
+                    pass
+        return max_mtime
+    except OSError:
+        return 0
 
 
 def _is_cache_valid(config: Dict[str, Any]) -> bool:
@@ -119,7 +115,8 @@ def get_all_images() -> List[str]:
         return _image_cache['images']
     
     # Cache miss or invalid - rescan
-    images = []
+    # Use (path, mtime) tuples to avoid calling getmtime twice per file
+    image_entries = []  # List of (path, mtime) tuples
     folder_mtimes = {}
     
     for folder_path in config.get('folders', []):
@@ -139,10 +136,16 @@ def get_all_images() -> List[str]:
                                     continue  # Skip videos over size limit
                             except OSError:
                                 continue  # Skip if can't read file
-                        images.append(full_path)
+                        # Cache mtime during initial scan to avoid double lookup
+                        try:
+                            mtime = os.path.getmtime(full_path)
+                        except OSError:
+                            mtime = 0
+                        image_entries.append((full_path, mtime))
     
     # Sort by modification time (newest first) for a more natural feel
-    images.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    image_entries.sort(key=lambda x: x[1], reverse=True)
+    images = [entry[0] for entry in image_entries]
     
     # Update cache
     _image_cache['images'] = images

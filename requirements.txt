@@ -9,6 +9,7 @@ flask>=2.0.0              # Web framework - required to run the server
 flask-compress>=1.14.0    # Gzip compression for API responses
 flask-httpauth>=4.8.0     # HTTP authentication (password protection)
 flask-session>=0.5.0      # Server-side sessions for auth persistence
+filelock>=3.12.0          # Thread-safe file writes for multi-worker deployments
 
 # =============================================================================
 # OPTIONAL - Enhanced Features

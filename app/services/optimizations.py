@@ -6,6 +6,7 @@ Handles thumbnail generation and video poster extraction.
 import os
 import hashlib
 import subprocess
+import logging
 from typing import Optional
 
 from app.config import (
@@ -13,6 +14,8 @@ from app.config import (
     THUMBNAIL_MAX_SIZE,
     THUMBNAIL_QUALITY,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_thumbnail_dir() -> None:
@@ -67,7 +70,7 @@ def create_thumbnail(
             if transposed is not None:
                 img = transposed
             else:
-                print(f"[Thumbnail] No EXIF orientation data for: {source_path}")
+                logger.debug("No EXIF orientation data for: %s", source_path)
             
             # Handle HEIC format by converting to RGB first
             if img.mode in ('RGBA', 'LA', 'P'):
@@ -104,7 +107,7 @@ def create_thumbnail(
             return True
             
     except Exception as e:
-            print(f"Error creating thumbnail for {source_path}: {e}")
+            logger.error("Error creating thumbnail for %s: %s", source_path, e)
             return False
 
 
@@ -154,17 +157,17 @@ def create_video_poster(
         if result.returncode == 0 and os.path.exists(target_path):
             return True
         else:
-            print(f"ffmpeg error extracting poster from {video_path}: {result.stderr.decode()[:500]}")
+            logger.error("ffmpeg error extracting poster from %s: %s", video_path, result.stderr.decode()[:500])
             return False
             
     except subprocess.TimeoutExpired:
-        print(f"Timeout extracting video poster: {video_path}")
+        logger.warning("Timeout extracting video poster: %s", video_path)
         return False
     except FileNotFoundError:
-        print("ffmpeg not found - video poster extraction requires ffmpeg")
+        logger.warning("ffmpeg not found - video poster extraction requires ffmpeg")
         return False
     except Exception as e:
-        print(f"Error extracting video poster {video_path}: {e}")
+        logger.error("Error extracting video poster %s: %s", video_path, e)
         return False
 
 

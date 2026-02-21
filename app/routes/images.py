@@ -6,9 +6,12 @@ Handles serving images, thumbnails, GIF conversions, and video posters.
 import os
 import time
 import hashlib
+import logging
 from pathlib import Path
 from urllib.parse import unquote
 from flask import Blueprint, request, jsonify, make_response, send_file
+
+logger = logging.getLogger(__name__)
 
 from app.config import (
     MIME_TYPES,
@@ -400,7 +403,7 @@ def serve_thumbnail():
     optimizations = get_optimization_settings()
     if not optimizations.get('thumbnail_cache', False):
         # Optimization disabled - fall back to original image
-        print(f"[Thumbnail] Optimization disabled, serving original")
+        logger.debug("Thumbnail optimization disabled, serving original")
         return serve_image()
     
     image_path = request.args.get('path')
@@ -425,7 +428,7 @@ def serve_thumbnail():
     # GIFs need to stay animated, videos are handled separately
     if ext in GIF_FORMATS or ext in VIDEO_FORMATS:
         # Redirect to original image endpoint
-        print(f"[Thumbnail] Skipping {ext} file, serving original")
+        logger.debug("Skipping %s file, serving original", ext)
         return serve_image()
     
     # Get file stats for cache key and validation
@@ -454,15 +457,15 @@ def serve_thumbnail():
     
     # Check if thumbnail already exists in cache
     if not os.path.exists(thumbnail_path):
-        print(f"[Thumbnail] Creating new thumbnail for: {expanded_image}")
+        logger.debug("Creating new thumbnail for: %s", expanded_image)
         # Create thumbnail
         if not create_thumbnail(expanded_image, thumbnail_path):
-            print(f"[Thumbnail] Failed to create thumbnail, serving original")
+            logger.warning("Failed to create thumbnail, serving original")
             # Fall back to original if thumbnail creation fails
             return serve_image()
-        print(f"[Thumbnail] Created: {thumbnail_path}")
+        logger.info("Thumbnail created: %s", thumbnail_path)
     else:
-        print(f"[Thumbnail] Serving cached: {thumbnail_path}")
+        logger.debug("Serving cached thumbnail: %s", thumbnail_path)
     
     # Serve the cached thumbnail
     try:

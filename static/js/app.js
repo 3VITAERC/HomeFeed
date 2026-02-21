@@ -1277,20 +1277,29 @@ function updateFilePathDisplay() {
     const folderPath = path.substring(0, path.lastIndexOf('/')) || path.substring(0, path.lastIndexOf('\\'));
     const folderName = folderPath.split('/').pop().split('\\').pop();
     
-    filePathDisplay.innerHTML = `
-        <div class="file-path-folder" title="${folderPath}">${folderName}</div>
-        <div class="file-path-filename">${filename}</div>
-    `;
+    // Update text content directly instead of rebuilding innerHTML
+    let folderEl = filePathDisplay.querySelector('.file-path-folder');
+    let fileEl = filePathDisplay.querySelector('.file-path-filename');
     
-    // Make folder clickable
-    const folderEl = filePathDisplay.querySelector('.file-path-folder');
-    if (folderEl) {
+    if (!folderEl || !fileEl) {
+        // First render — create elements once
+        filePathDisplay.innerHTML = `
+            <div class="file-path-folder"></div>
+            <div class="file-path-filename"></div>
+        `;
+        folderEl = filePathDisplay.querySelector('.file-path-folder');
+        fileEl = filePathDisplay.querySelector('.file-path-filename');
+        // Add listener ONCE
         folderEl.addEventListener('click', () => {
-            if (folderPath) {
-                enterFolderMode(folderPath);
-            }
+            const currentFolderPath = folderEl.dataset.path;
+            if (currentFolderPath) enterFolderMode(currentFolderPath);
         });
     }
+    
+    folderEl.textContent = folderName;
+    folderEl.title = folderPath;
+    folderEl.dataset.path = folderPath;  // Store path for click handler
+    fileEl.textContent = filename;
 }
 
 // ============ Actions ============
@@ -2825,7 +2834,7 @@ function toggleAutoAdvanceOff() {
     }
     
     // Save to server
-    API.saveSettings({ auto_advance: false });
+    API.updateSettings({ optimizations: { auto_advance: false } });
     
     showToast('Auto-advance turned off');
 }
