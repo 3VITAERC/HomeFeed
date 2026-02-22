@@ -247,7 +247,7 @@
     <div class="info-modal" id="infoModal" style="display: none;">
         <div class="info-modal-content">
             <div class="info-modal-header">
-                <h3>Image Info</h3>
+                <h3>Info</h3>
                 <button class="info-modal-close" id="infoModalClose">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -255,6 +255,36 @@
                     </svg>
                 </button>
             </div>
+            <!-- View History section -->
+            <div class="settings-seen-section info-modal-seen-section">
+                <div class="settings-seen-header">View History</div>
+                <div class="settings-seen-stats">
+                    <div class="settings-seen-stat">
+                        <div class="settings-seen-stat-value" id="seenStatCount">0</div>
+                        <div class="settings-seen-stat-label">Seen</div>
+                    </div>
+                    <div class="settings-seen-stat">
+                        <div class="settings-seen-stat-value" id="seenStatUnseen">0</div>
+                        <div class="settings-seen-stat-label">New</div>
+                    </div>
+                    <div class="settings-seen-stat">
+                        <div class="settings-seen-stat-value" id="seenStatScrolls">0</div>
+                        <div class="settings-seen-stat-label">Total Scrolls</div>
+                    </div>
+                    <div class="settings-seen-stat">
+                        <div class="settings-seen-stat-value" id="seenStatProgress">0%</div>
+                        <div class="settings-seen-stat-label">Progress</div>
+                    </div>
+                </div>
+                <button class="settings-reset-seen-btn" id="resetSeenBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                        <path d="M3 3v5h5"></path>
+                    </svg>
+                    <span>Reset Watch History</span>
+                </button>
+            </div>
+            <!-- Image Info section (dynamic) -->
             <div class="info-modal-body" id="infoModalBody">
                 <!-- Metadata populated by JavaScript -->
             </div>
@@ -374,35 +404,6 @@
                         </button>
                     </div>
                     
-                    <!-- Watch History / Seen Stats section -->
-                    <div class="settings-seen-section">
-                        <div class="settings-seen-header">Watch History</div>
-                        <div class="settings-seen-stats">
-                            <div class="settings-seen-stat">
-                                <div class="settings-seen-stat-value" id="seenStatCount">0</div>
-                                <div class="settings-seen-stat-label">Seen</div>
-                            </div>
-                            <div class="settings-seen-stat">
-                                <div class="settings-seen-stat-value" id="seenStatUnseen">0</div>
-                                <div class="settings-seen-stat-label">New</div>
-                            </div>
-                            <div class="settings-seen-stat">
-                                <div class="settings-seen-stat-value" id="seenStatScrolls">0</div>
-                                <div class="settings-seen-stat-label">Total Scrolls</div>
-                            </div>
-                            <div class="settings-seen-stat">
-                                <div class="settings-seen-stat-value" id="seenStatProgress">0%</div>
-                                <div class="settings-seen-stat-label">Progress</div>
-                            </div>
-                        </div>
-                        <button class="settings-reset-seen-btn" id="resetSeenBtn">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                                <path d="M3 3v5h5"></path>
-                            </svg>
-                            <span>Reset Watch History</span>
-                        </button>
-                    </div>
                 </div>
                 
                 <!-- Display Tab Content -->

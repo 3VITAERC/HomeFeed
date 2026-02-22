@@ -223,6 +223,31 @@ function setupEventListeners() {
     
     // Modal close buttons
     if (infoModalClose) infoModalClose.addEventListener('click', hideInfoModal);
+
+    // Reset seen history button (in info modal)
+    const resetSeenBtn = document.getElementById('resetSeenBtn');
+    if (resetSeenBtn) {
+        resetSeenBtn.addEventListener('click', () => {
+            showConfirmModal({
+                title: 'Reset Watch History?',
+                message: 'This will clear all records of which photos you\'ve seen. Your New feed will reset to show all images again.',
+                confirmText: 'Reset History',
+                cancelText: 'Cancel',
+                danger: false,
+                onConfirm: async () => {
+                    await API.resetSeen();
+                    state.seenStats = { seen_count: 0, total_count: state.seenStats.total_count, total_scrolls: 0, percent_seen: 0 };
+                    renderSeenStats();
+                    if (state.showingUnseenOnly) {
+                        if (scrollContainer) scrollContainer.innerHTML = '';
+                        if (noUnseen) noUnseen.style.display = 'flex';
+                        if (filePathDisplay) filePathDisplay.style.display = 'none';
+                        hideLoadingOverlay();
+                    }
+                }
+            });
+        });
+    }
     if (settingsModalClose) settingsModalClose.addEventListener('click', hideSettingsModal);
     if (shortcutsModalClose) shortcutsModalClose.addEventListener('click', hideShortcutsModal);
     if (foldersModalClose) foldersModalClose.addEventListener('click', hideFoldersModal);
@@ -2061,15 +2086,19 @@ function showInfoModal() {
     // Show loading state
     infoModalBody.innerHTML = '<div class="info-loading">Loading metadata...</div>';
     infoModal.style.display = 'flex';
-    
+
+    // Refresh view history stats
+    loadAndRenderSeenStats();
+
     // Fetch EXIF data from API
     API.getImageMetadata(path).then(metadata => {
         // Extract EXIF data if available
         const exif = metadata.exif || {};
         const camera = exif.Model || exif.Make ? [exif.Make, exif.Model].filter(Boolean).join(' ') : null;
         const photoDate = exif.DateTimeOriginal || exif.DateTime || null;
-        
+
         infoModalBody.innerHTML = `
+            <div class="settings-seen-header">Image Info</div>
             <div class="info-row">
                 <span class="info-label">Filename</span>
                 <span class="info-value">${filename}</span>
@@ -2122,6 +2151,7 @@ function showInfoModal() {
     }).catch(error => {
         console.error('Failed to load metadata:', error);
         infoModalBody.innerHTML = `
+            <div class="settings-seen-header">Image Info</div>
             <div class="info-row">
                 <span class="info-label">Filename</span>
                 <span class="info-value">${filename}</span>
@@ -2284,35 +2314,6 @@ async function loadSettingsModalData() {
         if (trashBadge) {
             trashBadge.textContent = state.trash.size;
             trashBadge.style.display = state.trash.size > 0 ? 'inline' : 'none';
-        }
-        
-        // Load and render seen stats
-        await loadAndRenderSeenStats();
-        
-        // Setup Reset Seen History button
-        const resetSeenBtn = document.getElementById('resetSeenBtn');
-        if (resetSeenBtn) {
-            resetSeenBtn.onclick = () => {
-                showConfirmModal({
-                    title: 'Reset Watch History?',
-                    message: 'This will clear all records of which photos you\'ve seen. Your New feed will reset to show all images again.',
-                    confirmText: 'Reset History',
-                    cancelText: 'Cancel',
-                    danger: false,
-                    onConfirm: async () => {
-                        await API.resetSeen();
-                        state.seenStats = { seen_count: 0, total_count: state.seenStats.total_count, total_scrolls: 0, percent_seen: 0 };
-                        renderSeenStats();
-                        // If currently in unseen mode, show the empty-state panel
-                        if (state.showingUnseenOnly) {
-                            if (scrollContainer) scrollContainer.innerHTML = '';
-                            if (noUnseen) noUnseen.style.display = 'flex';
-                            if (filePathDisplay) filePathDisplay.style.display = 'none';
-                            hideLoadingOverlay();
-                        }
-                    }
-                });
-            };
         }
         
         // Setup logout button (check auth status first)

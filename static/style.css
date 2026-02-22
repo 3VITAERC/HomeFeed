@@ -2448,6 +2448,11 @@ html, body {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.info-modal-seen-section {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
 .settings-seen-header {
     font-size: 13px;
     font-weight: 600;
