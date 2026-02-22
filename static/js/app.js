@@ -109,12 +109,15 @@ async function init() {
         loadImageForSlide(slide);
     });
     
-    // Load initial data
-    await loadInitialData();
-    
+    // Load initial data and seen stats in parallel
+    await Promise.all([
+        loadInitialData(),
+        loadAndRenderSeenStats(),
+    ]);
+
     // Initialize top nav (delayed)
     initTopNav();
-    
+
     // Set up seen flush on page unload
     setupSeenFlushOnUnload();
 }
@@ -2557,6 +2560,7 @@ function renderFoldersModalList(searchQuery = '') {
     const totalCount = leafFolders.reduce((sum, f) => sum + f.count, 0);
     const likesCount = state.favorites.size;
     const trashCount = state.trash.size;
+    const unseenCount = Math.max(0, state.seenStats.total_count - state.seenStats.seen_count);
     
     let filteredFolders = leafFolders;
     if (searchQuery.trim()) {
@@ -2598,7 +2602,7 @@ function renderFoldersModalList(searchQuery = '') {
                     </svg>
                 </div>
                 <div class="folders-quick-access-label">New</div>
-                <div class="folders-quick-access-count unseen-count-badge"></div>
+                <div class="folders-quick-access-count unseen-count-badge">${unseenCount > 0 ? unseenCount.toLocaleString() : ''}</div>
             </div>
             <div class="folders-quick-access-item${isLikesActive ? ' active' : ''}" data-folder-path="__likes__">
                 <div class="folders-quick-access-icon">
@@ -3245,7 +3249,6 @@ function setupPullToRefresh() {
 
     const THRESHOLD    = 80;   // px of real drag needed to trigger
     const MAX_DRAG     = 110;  // max visual translation of the nav
-    const DAMPING      = 0.55; // rubber-band factor
 
     // Get safe-area-inset-top for PWA mode (returns 0 if not supported)
     const getSafeAreaTop = () => {
@@ -3297,6 +3300,9 @@ function setupPullToRefresh() {
         isDragging   = true;
         isVertical   = null;
         thresholdMet = false;
+        // Remove any lingering snap-back transition so drag follows finger directly
+        navEl.classList.remove('snap-back');
+        tipEl.classList.remove('snap-back');
     }, { passive: true });
 
     navEl.addEventListener('touchmove', (e) => {
@@ -3316,10 +3322,8 @@ function setupPullToRefresh() {
             return;
         }
 
-        // Rubber-band: drag slows as it approaches MAX_DRAG
-        const progress   = dy / MAX_DRAG;
-        const visualDrag = MAX_DRAG * (1 - Math.exp(-progress)) * (MAX_DRAG / dy) * dy * DAMPING;
-        const clamped    = Math.min(visualDrag, MAX_DRAG);
+        // Rubber-band: starts near 1:1 then decelerates smoothly towards MAX_DRAG
+        const clamped = Math.min(MAX_DRAG * (1 - Math.exp(-dy / MAX_DRAG)), MAX_DRAG);
 
         // Move nav downward
         navEl.style.transform = `translateY(${clamped}px)`;
