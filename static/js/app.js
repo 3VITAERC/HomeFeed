@@ -28,8 +28,8 @@ import {
 import API from './api.js';
 
 // DOM Elements - initialized after DOM is ready
-let scrollContainer, noImages, noFavorites, jumpModal, jumpInput, jumpTotal;
-let jumpCancel, jumpGo, trashAnimation, exitFilterBtn, noTrash, exitTrashBtn;
+let scrollContainer, noImages, noFavorites, noUnseen, jumpModal, jumpInput, jumpTotal;
+let jumpCancel, jumpGo, trashAnimation, exitFilterBtn, noTrash, exitTrashBtn, exitUnseenBtn;
 let loadingOverlay;
 let heartBtn, trashBtn, filterBtn, filterBadge, shuffleBtn, infoBtn, settingsBtn;
 let noImagesSettingsBtn;
@@ -81,6 +81,12 @@ function _onSlideActivated(newIndex) {
     if (state.optimizations.auto_advance) {
         startAutoAdvanceTimer();
     }
+
+    // Track the current image as seen
+    const currentSrc = state.images[newIndex];
+    if (currentSrc) {
+        markCurrentImageSeen(currentSrc);
+    }
 }
 
 /**
@@ -114,6 +120,9 @@ async function init() {
     
     // Initialize top nav (delayed)
     initTopNav();
+    
+    // Set up seen flush on page unload
+    setupSeenFlushOnUnload();
 }
 
 /**
@@ -132,6 +141,8 @@ function initDOMElements() {
     exitFilterBtn = document.getElementById('exitFilterBtn');
     noTrash = document.getElementById('noTrash');
     exitTrashBtn = document.getElementById('exitTrashBtn');
+    noUnseen = document.getElementById('noUnseen');
+    exitUnseenBtn = document.getElementById('exitUnseenBtn');
     
     // Loading overlay
     loadingOverlay = document.getElementById('loadingOverlay');
@@ -218,6 +229,7 @@ function setupEventListeners() {
     // Exit buttons
     if (exitFilterBtn) exitFilterBtn.addEventListener('click', exitFavoritesMode);
     if (exitTrashBtn) exitTrashBtn.addEventListener('click', exitTrashMode);
+    if (exitUnseenBtn) exitUnseenBtn.addEventListener('click', exitUnseenMode);
     
     // Modal close buttons
     if (infoModalClose) infoModalClose.addEventListener('click', hideInfoModal);
@@ -419,6 +431,75 @@ function setupEventListeners() {
     
     // Pull-to-refresh gesture on the top nav bar
     setupPullToRefresh();
+}
+
+// ============ Seen Tracking ============
+
+/**
+ * Add an image URL to the seen pending buffer.
+ * Flushes automatically when buffer reaches 10 items.
+ * Also sets up a periodic flush timer if not already running.
+ *
+ * @param {string} imageUrl - The image URL (e.g. '/image?path=...')
+ */
+function markCurrentImageSeen(imageUrl) {
+    // Don't track seen status when browsing the Trash feed (trashed images shouldn't affect the seen feed)
+    if (state.showingTrashOnly) return;
+
+    if (!state.seenPendingBuffer.includes(imageUrl)) {
+        state.seenPendingBuffer.push(imageUrl);
+    }
+
+    // Flush if buffer reaches threshold
+    if (state.seenPendingBuffer.length >= 10) {
+        flushSeenBuffer();
+    }
+
+    // Start periodic flush timer on first seen item (if not already running)
+    if (!state.seenFlushTimer && state.seenPendingBuffer.length > 0) {
+        state.seenFlushTimer = setInterval(() => {
+            if (state.seenPendingBuffer.length > 0) {
+                flushSeenBuffer();
+            }
+        }, 5000);
+    }
+}
+
+/**
+ * Flush the pending seen buffer to the server.
+ * Safe to call even if buffer is empty.
+ */
+async function flushSeenBuffer() {
+    if (state.seenPendingBuffer.length === 0) return;
+
+    const toFlush = [...state.seenPendingBuffer];
+    state.seenPendingBuffer = [];
+
+    try {
+        await API.markSeenBatch(toFlush);
+    } catch (error) {
+        // On failure, push back to buffer to retry next flush
+        state.seenPendingBuffer.push(...toFlush);
+        console.warn('[Seen] Failed to flush seen buffer, will retry:', error);
+    }
+}
+
+/**
+ * Set up beforeunload flush so seen items are saved when user navigates away.
+ */
+function setupSeenFlushOnUnload() {
+    window.addEventListener('beforeunload', () => {
+        if (state.seenPendingBuffer.length > 0) {
+            // Use sendBeacon for reliability during unload
+            const payload = JSON.stringify({ paths: state.seenPendingBuffer });
+            navigator.sendBeacon('/api/seen/batch', new Blob([payload], { type: 'application/json' }));
+        }
+        // Clear the periodic timer
+        if (state.seenFlushTimer) {
+            clearInterval(state.seenFlushTimer);
+            state.seenFlushTimer = null;
+        }
+    });
 }
 
 /**
@@ -1353,6 +1434,9 @@ async function addFavorite() {
         await API.addFavorite(currentSrc);
         state.favorites.add(path);
         
+        // Favoriting = seen (mark immediately without waiting for buffer)
+        markCurrentImageSeen(currentSrc);
+        
         updateFavoriteButton();
         updateFilterBadge();
         
@@ -1427,6 +1511,8 @@ async function toggleTrash() {
             // Remove from favorites if present (mutual exclusion)
             state.favorites.delete(path);
             showTrashIconFeedback(true); // Show "marked for deletion" feedback
+            // Trashing = seen (mark immediately)
+            markCurrentImageSeen(currentSrc);
         }
         
         updateTrashButton();
@@ -1810,6 +1896,84 @@ async function exitTrashMode() {
     scrollToImage(state.savedIndex, 'instant'); // Instant scroll - already showing loading overlay
 }
 
+// ============ Unseen Mode ============
+
+/**
+ * Enter unseen-only mode.
+ * Shows only images the user has not yet scrolled past.
+ */
+async function enterUnseenMode() {
+    state.savedIndex = state.currentIndex;
+    state.savedImages = [...state.images]; // Backup current images
+    state.unshuffledImages = []; // Clear shuffle backup
+    state.showingUnseenOnly = true;
+    
+    try {
+        state.images = await API.getUnseenImages(state.currentSortOrder);
+        
+        // Reset current index
+        state.currentIndex = 0;
+        
+        if (state.images.length > 0) {
+            showLoadingOverlay();
+            buildSlides(0);
+            prioritizeFirstImage();
+            updateUI();
+            updateTopNavActiveState();
+            scrollToImage(0, 'instant');
+        } else {
+            // All images have been seen — show empty state
+            hideLoadingOverlay();
+            if (scrollContainer) scrollContainer.innerHTML = '';
+            if (noUnseen) noUnseen.style.display = 'flex';
+            if (filePathDisplay) filePathDisplay.style.display = 'none';
+            updateTopNavActiveState();
+        }
+        
+    } catch (error) {
+        console.error('Failed to enter unseen mode:', error);
+    }
+}
+
+/**
+ * Exit unseen-only mode, restoring previous feed.
+ */
+async function exitUnseenMode() {
+    state.showingUnseenOnly = false;
+    state.unshuffledImages = []; // Clear shuffle backup
+    
+    // Restore backed up images, or reload if backup is empty
+    if (state.savedImages.length > 0) {
+        state.images = [...state.savedImages];
+        state.savedImages = [];
+    } else {
+        try {
+            state.images = await API.getImages(state.currentSortOrder);
+        } catch (error) {
+            console.error('Failed to reload images:', error);
+        }
+    }
+    
+    // If shuffle is enabled, shuffle the restored images
+    if (state.shuffleEnabled && state.images.length > 0) {
+        state.unshuffledImages = [...state.images];
+        shuffleArray(state.images);
+    }
+    
+    // Restore to saved index
+    state.currentIndex = state.savedIndex;
+    
+    if (noUnseen) noUnseen.style.display = 'none';
+    if (filePathDisplay) filePathDisplay.style.display = '';
+    
+    showLoadingOverlay();
+    buildSlides(state.savedIndex);
+    prioritizeFirstImage(state.savedIndex);
+    updateUI();
+    updateTopNavActiveState();
+    scrollToImage(state.savedIndex, 'instant');
+}
+
 /**
  * Show a generalized confirmation modal
  * @param {Object} options - Modal options
@@ -2140,6 +2304,35 @@ async function loadSettingsModalData() {
             trashBadge.style.display = state.trash.size > 0 ? 'inline' : 'none';
         }
         
+        // Load and render seen stats
+        await loadAndRenderSeenStats();
+        
+        // Setup Reset Seen History button
+        const resetSeenBtn = document.getElementById('resetSeenBtn');
+        if (resetSeenBtn) {
+            resetSeenBtn.onclick = () => {
+                showConfirmModal({
+                    title: 'Reset Watch History?',
+                    message: 'This will clear all records of which photos you\'ve seen. Your New feed will reset to show all images again.',
+                    confirmText: 'Reset History',
+                    cancelText: 'Cancel',
+                    danger: false,
+                    onConfirm: async () => {
+                        await API.resetSeen();
+                        state.seenStats = { seen_count: 0, total_count: state.seenStats.total_count, total_scrolls: 0, percent_seen: 0 };
+                        renderSeenStats();
+                        // If currently in unseen mode, show the empty-state panel
+                        if (state.showingUnseenOnly) {
+                            if (scrollContainer) scrollContainer.innerHTML = '';
+                            if (noUnseen) noUnseen.style.display = 'flex';
+                            if (filePathDisplay) filePathDisplay.style.display = 'none';
+                            hideLoadingOverlay();
+                        }
+                    }
+                });
+            };
+        }
+        
         // Setup logout button (check auth status first)
         setupLogoutButton();
         
@@ -2182,6 +2375,49 @@ function renderSettingsFolderList(folders) {
 
 function hideSettingsModal() {
     if (settingsModal) settingsModal.style.display = 'none';
+}
+
+/**
+ * Load seen stats from API and render them in the settings modal.
+ */
+async function loadAndRenderSeenStats() {
+    try {
+        const stats = await API.getSeenStats();
+        state.seenStats = stats;
+        renderSeenStats();
+    } catch (error) {
+        console.warn('[Seen] Failed to load seen stats:', error);
+    }
+}
+
+/**
+ * Render seen stats into the Settings modal DOM elements.
+ * Also updates the unseen count badge in the folders modal quick access.
+ */
+function renderSeenStats() {
+    const { seen_count, total_count, total_scrolls, percent_seen } = state.seenStats;
+    const unseen_count = Math.max(0, total_count - seen_count);
+    
+    // Settings modal stat elements
+    const seenCountEl = document.getElementById('seenStatCount');
+    const totalScrollsEl = document.getElementById('seenStatScrolls');
+    const seenProgressEl = document.getElementById('seenStatProgress');
+    const unseenCountEl = document.getElementById('seenStatUnseen');
+    
+    if (seenCountEl) seenCountEl.textContent = seen_count.toLocaleString();
+    if (totalScrollsEl) totalScrollsEl.textContent = total_scrolls.toLocaleString();
+    if (seenProgressEl) seenProgressEl.textContent = `${percent_seen}%`;
+    if (unseenCountEl) unseenCountEl.textContent = unseen_count.toLocaleString();
+    
+    // Update unseen count badges (in top nav "New" tab and folders modal quick access)
+    document.querySelectorAll('.unseen-count-badge').forEach(el => {
+        el.textContent = unseen_count > 0 ? unseen_count.toLocaleString() : '';
+    });
+    
+    // Update the "New" top nav tab label with count
+    document.querySelectorAll('.top-nav-tab[data-folder="unseen"]').forEach(tab => {
+        tab.textContent = unseen_count > 0 ? `New (${unseen_count.toLocaleString()})` : 'New';
+    });
 }
 
 /**
@@ -2350,8 +2586,9 @@ function renderFoldersModalList(searchQuery = '') {
     
     const sortedFolders = sortFolders(filteredFolders, currentFolderSort);
     
-    // Build quick access row with All, Likes, and Trash
-    const isAllActive = !activeFolder && !state.showingFavoritesOnly && !state.showingTrashOnly;
+    // Build quick access row with All, New (Unseen), Likes, and Trash
+    const isAllActive = !activeFolder && !state.showingFavoritesOnly && !state.showingTrashOnly && !state.showingUnseenOnly;
+    const isUnseenActive = state.showingUnseenOnly;
     const isLikesActive = state.showingFavoritesOnly && !state.showingTrashOnly;
     const isTrashActive = state.showingTrashOnly;
     
@@ -2368,6 +2605,17 @@ function renderFoldersModalList(searchQuery = '') {
                 </div>
                 <div class="folders-quick-access-label">All</div>
                 <div class="folders-quick-access-count">${totalCount}</div>
+            </div>
+            <div class="folders-quick-access-item${isUnseenActive ? ' active' : ''}" data-folder-path="__unseen__">
+                <div class="folders-quick-access-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="${isUnseenActive ? '#34C759' : 'currentColor'}" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        ${isUnseenActive ? '' : '<line x1="1" y1="1" x2="23" y2="23"></line>'}
+                    </svg>
+                </div>
+                <div class="folders-quick-access-label">New</div>
+                <div class="folders-quick-access-count unseen-count-badge"></div>
             </div>
             <div class="folders-quick-access-item${isLikesActive ? ' active' : ''}" data-folder-path="__likes__">
                 <div class="folders-quick-access-icon">
@@ -2434,12 +2682,22 @@ function renderFoldersModalList(searchQuery = '') {
                 if (state.showingFolderOnly) exitFolderMode();
                 if (state.showingFavoritesOnly) exitFavoritesMode();
                 if (state.showingTrashOnly) exitTrashMode();
+                if (state.showingUnseenOnly) exitUnseenMode();
                 state.currentTopNavFolder = 'all';
+                updateTopNavActiveState();
+            } else if (folderPath === '__unseen__') {
+                // Enter unseen mode
+                if (state.showingFolderOnly) exitFolderMode();
+                if (state.showingFavoritesOnly) exitFavoritesMode();
+                if (state.showingTrashOnly) exitTrashMode();
+                if (!state.showingUnseenOnly) await enterUnseenMode();
+                state.currentTopNavFolder = 'unseen';
                 updateTopNavActiveState();
             } else if (folderPath === '__likes__') {
                 // Enter favorites mode
                 if (state.showingFolderOnly) exitFolderMode();
                 if (state.showingTrashOnly) exitTrashMode();
+                if (state.showingUnseenOnly) exitUnseenMode();
                 if (!state.showingFavoritesOnly) await enterFavoritesMode();
                 state.currentTopNavFolder = 'likes';
                 updateTopNavActiveState();
@@ -2447,6 +2705,7 @@ function renderFoldersModalList(searchQuery = '') {
                 // Enter trash mode
                 if (state.showingFolderOnly) exitFolderMode();
                 if (state.showingFavoritesOnly) exitFavoritesMode();
+                if (state.showingUnseenOnly) exitUnseenMode();
                 if (!state.showingTrashOnly) await viewTrash();
                 state.currentTopNavFolder = 'trash';
                 updateTopNavActiveState();
@@ -2538,6 +2797,14 @@ function renderTopNavTabs() {
         topNavTabs.appendChild(tab);
     });
     
+    // Add Unseen tab
+    const unseenTab = document.createElement('button');
+    unseenTab.className = 'top-nav-tab';
+    unseenTab.dataset.folder = 'unseen';
+    unseenTab.textContent = 'New';
+    unseenTab.addEventListener('click', () => selectTopNavFolder('unseen'));
+    topNavTabs.appendChild(unseenTab);
+    
     // Add All tab
     const allTab = document.createElement('button');
     allTab.className = 'top-nav-tab active';
@@ -2559,15 +2826,24 @@ async function selectTopNavFolder(folderPath) {
         if (state.showingFolderOnly) exitFolderMode();
         if (state.showingFavoritesOnly) exitFavoritesMode();
         if (state.showingTrashOnly) exitTrashMode();
+        if (state.showingUnseenOnly) exitUnseenMode();
         state.currentTopNavFolder = 'all';
+    } else if (folderPath === 'unseen') {
+        if (state.showingFolderOnly) exitFolderMode();
+        if (state.showingFavoritesOnly) exitFavoritesMode();
+        if (state.showingTrashOnly) exitTrashMode();
+        if (!state.showingUnseenOnly) await enterUnseenMode();
+        state.currentTopNavFolder = 'unseen';
     } else if (folderPath === 'likes') {
         if (state.showingFolderOnly) exitFolderMode();
         if (state.showingTrashOnly) exitTrashMode();
+        if (state.showingUnseenOnly) exitUnseenMode();
         if (!state.showingFavoritesOnly) await enterFavoritesMode();
         state.currentTopNavFolder = 'likes';
     } else if (folderPath === 'trash') {
         if (state.showingFolderOnly) exitFolderMode();
         if (state.showingFavoritesOnly) exitFavoritesMode();
+        if (state.showingUnseenOnly) exitUnseenMode();
         if (!state.showingTrashOnly) await viewTrash();
         state.currentTopNavFolder = 'trash';
     } else {
@@ -2592,6 +2868,7 @@ function updateTopNavActiveState() {
     let activeFolder = 'all';
     if (state.showingTrashOnly) activeFolder = 'trash';
     else if (state.showingFavoritesOnly) activeFolder = 'likes';
+    else if (state.showingUnseenOnly) activeFolder = 'unseen';
     else if (state.showingFolderOnly) activeFolder = normalizePath(state.currentFolderFilter);
     
     // Find the matching tab - normalize paths for comparison
@@ -2655,7 +2932,9 @@ async function reloadImages(sortOrder) {
         state.currentSortOrder = sortOrder;
         
         // Reload based on current view mode
-        if (state.showingTrashOnly) {
+        if (state.showingUnseenOnly) {
+            state.images = await API.getUnseenImages(sortOrder);
+        } else if (state.showingTrashOnly) {
             state.images = await API.getTrashImages(sortOrder);
         } else if (state.showingFavoritesOnly) {
             if (state.showingFolderOnly && state.currentFolderFilter) {

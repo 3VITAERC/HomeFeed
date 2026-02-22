@@ -146,12 +146,18 @@ state.currentIndex = 0;
 state.showingFavoritesOnly = false;
 state.showingTrashOnly = false;
 state.showingFolderOnly = false;
+state.showingUnseenOnly = false;   // NEW: unseen/new feed mode
 state.currentFolderFilter = null;  // Folder path when in folder mode
+
+// Seen tracking
+state.seenPendingBuffer = [];  // Accumulates image URLs before flushing to /api/seen/batch
+state.seenFlushTimer = null;   // setInterval handle for periodic 5s flush
+state.seenStats = { seen_count, total_count, total_scrolls, percent_seen };
 ```
 
 ### View Modes
 
-The app has 5 view modes that can combine:
+The app has 6 view modes (Unseen does not combine with other modes):
 
 | Mode | What Shows | Backup Used |
 |------|------------|-------------|
@@ -160,6 +166,7 @@ The app has 5 view modes that can combine:
 | Folder | Only images from a specific folder | `savedImages` |
 | Trash | Only images marked for deletion | None |
 | Folder + Favorites | Favorites within a specific folder | Both |
+| **Unseen** | **Only images not yet marked seen** | **`savedImages`** |
 
 ### State Save/Restore Pattern
 
@@ -190,14 +197,72 @@ The app has 5 view modes that can combine:
 | Favorites | `GET /api/favorites/images` |
 | Favorites + Folder | `GET /api/favorites/images/folder?folder=<path>` |
 | Trash | `GET /api/trash/images` |
+| **Unseen** | **`GET /api/unseen/images`** |
 
 ### Mode Transition Functions
 
 - `enterFavoritesMode()` / `exitFavoritesMode()` - Toggle favorites filter
 - `enterFolderMode(folderPath)` / `exitFolderMode()` - Toggle folder filter
 - `viewTrash()` / `exitTrashMode()` - Toggle trash view
+- **`enterUnseenMode()` / `exitUnseenMode()` - Toggle unseen/new feed**
 
 When modifying these, check ALL mode flags in both enter AND exit functions.
+
+---
+
+## Seen / Watch History System
+
+### Overview
+
+The app tracks which images the user has scrolled past ("seen") to power the **New** feed (`showingUnseenOnly`). Seen data is persisted in `seen.json`.
+
+### Data Format (`seen.json`)
+
+```json
+{
+  "seen": {
+    "/Users/john/Photos/vacation.jpg": {
+      "first_seen": 1708560000,
+      "seen_count": 3,
+      "last_seen": 1708900000
+    }
+  },
+  "total_scrolls": 847
+}
+```
+
+### "Seen" Rule
+
+An image is marked seen when **any** of these happen:
+- It becomes the active slide (`_onSlideActivated` fires) — in **all** feeds including the New feed itself
+- The user favorites it (`addFavorite` / `toggleFavorite`)
+- The user trashes it (`toggleTrash`)
+
+The **only** feed that skips seen-tracking is the **Trash** feed (browsing trashed items shouldn't affect the seen list). All other feeds — including the Unseen/New feed — track seen status normally so items disappear from the New feed as you scroll past them.
+
+### Batching
+
+To avoid one API call per scroll, seen paths are collected in `state.seenPendingBuffer` and flushed:
+- When buffer reaches **10 items**
+- Every **5 seconds** (periodic `setInterval`)
+- On **`beforeunload`** via `navigator.sendBeacon`
+
+### Seen API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/seen/batch` | Mark array of paths as seen; body: `{paths: [...]}` |
+| `GET` | `/api/seen/stats` | Stats: `{seen_count, total_count, total_scrolls, percent_seen}` |
+| `DELETE` | `/api/seen` | Reset all seen history |
+| `GET` | `/api/unseen/images` | All images minus seen set, respects sort order |
+
+### Empty-State Behavior
+
+When the Unseen feed has 0 images (all seen, or after a reset), `noUnseen` is shown — a full-screen panel with a "View All Photos" button. It does NOT auto-navigate; the user must tap the button.
+
+### Settings Integration
+
+The Settings modal (Library tab) shows a Watch History stats panel with 4 numbers: Seen, New, Total Scrolls, Progress %. A "Reset Watch History" button triggers a confirmation modal before clearing `seen.json`.
 
 ---
 

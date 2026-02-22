@@ -53,7 +53,18 @@ export const state = {
     showingFavoritesOnly: false,
     showingTrashOnly: false,
     showingFolderOnly: false,
+    showingUnseenOnly: false,
     currentFolderFilter: null,
+    
+    // Seen tracking
+    seenPendingBuffer: [],   // Accumulates image URLs to be flushed to /api/seen/batch
+    seenFlushTimer: null,    // setInterval handle for periodic flush
+    seenStats: {             // Cached stats from /api/seen/stats
+        seen_count: 0,
+        total_count: 0,
+        total_scrolls: 0,
+        percent_seen: 0,
+    },
     
     // Folder state
     savedIndex: 0,           // Saved position before entering folder mode
@@ -97,7 +108,11 @@ export function resetState() {
     state.showingFavoritesOnly = false;
     state.showingTrashOnly = false;
     state.showingFolderOnly = false;
+    state.showingUnseenOnly = false;
     state.currentFolderFilter = null;
+    state.seenPendingBuffer = [];
+    state.seenFlushTimer = null;
+    state.seenStats = { seen_count: 0, total_count: 0, total_scrolls: 0, percent_seen: 0 };
     state.savedIndex = 0;
     state.topNavFolders = [];
     state.topNavLoaded = false;

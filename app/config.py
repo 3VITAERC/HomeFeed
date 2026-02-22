@@ -13,6 +13,7 @@ CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 FAVORITES_FILE = os.path.join(BASE_DIR, 'favorites.json')
 TRASH_FILE = os.path.join(BASE_DIR, 'trash.json')
 THUMBNAIL_DIR = os.path.join(BASE_DIR, '.thumbnails')
+SEEN_FILE = os.path.join(BASE_DIR, 'seen.json')
 
 # Supported file formats
 SUPPORTED_FORMATS: Set[str] = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.m4v', '.mp4', '.mov'}

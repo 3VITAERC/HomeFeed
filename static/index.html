@@ -219,6 +219,20 @@
         <button class="exit-filter-btn" id="exitTrashBtn">View All Photos</button>
     </div>
     
+    <!-- No unseen state (all photos have been seen, or after reset) -->
+    <div class="no-images" id="noUnseen" style="display: none;">
+        <div class="no-unseen-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M9 9l6 6M15 9l-6 6" stroke="#34C759"></path>
+            </svg>
+        </div>
+        <h2>You're All Caught Up!</h2>
+        <p>You've seen every photo in your library.<br>Reset your history to start fresh.</p>
+        <button class="exit-filter-btn" id="exitUnseenBtn">View All Photos</button>
+    </div>
+    
     <!-- Trash animation overlay -->
     <div class="trash-animation" id="trashAnimation">
         <svg viewBox="0 0 24 24" fill="none" stroke="#FF3B30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -357,6 +371,36 @@
                             </svg>
                             <span>Review Trash</span>
                             <span class="trash-badge" id="settingsTrashBadge" style="display: none;">0</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Watch History / Seen Stats section -->
+                    <div class="settings-seen-section">
+                        <div class="settings-seen-header">Watch History</div>
+                        <div class="settings-seen-stats">
+                            <div class="settings-seen-stat">
+                                <div class="settings-seen-stat-value" id="seenStatCount">0</div>
+                                <div class="settings-seen-stat-label">Seen</div>
+                            </div>
+                            <div class="settings-seen-stat">
+                                <div class="settings-seen-stat-value" id="seenStatUnseen">0</div>
+                                <div class="settings-seen-stat-label">New</div>
+                            </div>
+                            <div class="settings-seen-stat">
+                                <div class="settings-seen-stat-value" id="seenStatScrolls">0</div>
+                                <div class="settings-seen-stat-label">Total Scrolls</div>
+                            </div>
+                            <div class="settings-seen-stat">
+                                <div class="settings-seen-stat-value" id="seenStatProgress">0%</div>
+                                <div class="settings-seen-stat-label">Progress</div>
+                            </div>
+                        </div>
+                        <button class="settings-reset-seen-btn" id="resetSeenBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                <path d="M3 3v5h5"></path>
+                            </svg>
+                            <span>Reset Watch History</span>
                         </button>
                     </div>
                 </div>

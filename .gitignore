@@ -2,6 +2,7 @@
 config.json
 favorites.json
 trash.json
+seen.json
 .thumbnails
 .archive-ignore
 Guides

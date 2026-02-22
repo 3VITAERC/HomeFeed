@@ -2470,6 +2470,102 @@ html, body {
     text-align: center;
 }
 
+/* ============ Seen / Watch History Settings Section ============ */
+
+.settings-seen-section {
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-seen-header {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+}
+
+.settings-seen-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.settings-seen-stat {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 10px 8px;
+    text-align: center;
+}
+
+.settings-seen-stat-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #34C759;
+    line-height: 1.2;
+}
+
+.settings-seen-stat-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.settings-reset-seen-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 20px;
+    background: rgba(52, 199, 89, 0.1);
+    border: 1px solid rgba(52, 199, 89, 0.2);
+    border-radius: 12px;
+    color: #34C759;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.settings-reset-seen-btn:hover {
+    background: rgba(52, 199, 89, 0.18);
+}
+
+.settings-reset-seen-btn:active {
+    transform: scale(0.98);
+}
+
+.settings-reset-seen-btn svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+/* ============ Unseen Empty State ============ */
+
+.no-unseen-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(52, 199, 89, 0.12);
+    border-radius: 50%;
+}
+
+.no-unseen-icon svg {
+    width: 44px;
+    height: 44px;
+    color: #34C759;
+    stroke: #34C759;
+}
+
 /* ============ Settings Logout Section ============ */
 
 .settings-logout-section {

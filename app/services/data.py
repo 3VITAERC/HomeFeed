@@ -1,10 +1,11 @@
 """
 Data management services for LocalFeed.
-Handles loading and saving configuration, favorites, and trash data.
+Handles loading and saving configuration, favorites, trash, and seen data.
 """
 
 import os
 import json
+import time
 from typing import Dict, Any, List
 from filelock import FileLock
 
@@ -12,6 +13,7 @@ from app.config import (
     CONFIG_FILE,
     FAVORITES_FILE,
     TRASH_FILE,
+    SEEN_FILE,
     DEFAULT_OPTIMIZATIONS,
 )
 
@@ -165,3 +167,96 @@ def cleanup_trash() -> List[str]:
         save_trash(valid_trash)
     
     return valid_trash
+
+
+def load_seen() -> Dict[str, Any]:
+    """Load seen data from seen.json.
+    
+    Returns:
+        Dict with 'seen' (dict of path -> metadata) and 'total_scrolls' (int)
+    """
+    if os.path.exists(SEEN_FILE):
+        try:
+            with open(SEEN_FILE, 'r') as f:
+                data = json.load(f)
+                return {
+                    'seen': data.get('seen', {}),
+                    'total_scrolls': data.get('total_scrolls', 0),
+                }
+        except (json.JSONDecodeError, IOError):
+            return {'seen': {}, 'total_scrolls': 0}
+    return {'seen': {}, 'total_scrolls': 0}
+
+
+def save_seen(data: Dict[str, Any]) -> None:
+    """Save seen data to seen.json.
+    
+    Args:
+        data: Dict with 'seen' dict and 'total_scrolls' int
+    """
+    lock = FileLock(SEEN_FILE + '.lock')
+    with lock:
+        with open(SEEN_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+
+
+def mark_seen_batch(paths: List[str]) -> Dict[str, Any]:
+    """Mark a batch of image paths as seen, incrementing total_scrolls.
+    
+    Each path records first_seen, seen_count, and last_seen timestamps.
+    total_scrolls is incremented by the number of NEW paths in this batch
+    (paths already seen do not increment total_scrolls again).
+    
+    Args:
+        paths: List of absolute file paths to mark as seen
+        
+    Returns:
+        Updated seen data dict
+    """
+    data = load_seen()
+    seen_map = data['seen']
+    now = time.time()
+    new_count = 0
+
+    for path in paths:
+        if path in seen_map:
+            seen_map[path]['seen_count'] += 1
+            seen_map[path]['last_seen'] = now
+        else:
+            seen_map[path] = {
+                'first_seen': now,
+                'seen_count': 1,
+                'last_seen': now,
+            }
+            new_count += 1
+
+    data['seen'] = seen_map
+    data['total_scrolls'] = data.get('total_scrolls', 0) + new_count
+    save_seen(data)
+    return data
+
+
+def get_seen_stats(total_image_count: int) -> Dict[str, Any]:
+    """Get statistics about seen images.
+    
+    Args:
+        total_image_count: Total number of images in the library (for percent calc)
+        
+    Returns:
+        Dict with seen_count, total_count, total_scrolls, percent_seen
+    """
+    data = load_seen()
+    seen_count = len(data['seen'])
+    total_scrolls = data.get('total_scrolls', 0)
+    percent_seen = round((seen_count / total_image_count * 100), 1) if total_image_count > 0 else 0
+    return {
+        'seen_count': seen_count,
+        'total_count': total_image_count,
+        'total_scrolls': total_scrolls,
+        'percent_seen': percent_seen,
+    }
+
+
+def reset_seen() -> None:
+    """Reset all seen history (clears seen.json)."""
+    save_seen({'seen': {}, 'total_scrolls': 0})

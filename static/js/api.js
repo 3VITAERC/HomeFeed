@@ -300,7 +300,7 @@ export async function updateSettings(settings) {
 
 /**
  * Get cache information
- * 
+ *
  * @returns {Promise<{files: number, size: number, size_formatted: string}>}
  */
 export async function getCacheInfo() {
@@ -309,11 +309,54 @@ export async function getCacheInfo() {
 
 /**
  * Clear all cached files
- * 
+ *
  * @returns {Promise<{success: boolean, deleted_count: number, errors: Array}>}
  */
 export async function clearCache() {
     return del('/api/cache', {});
+}
+
+// ============ Seen / Unseen API ============
+
+/**
+ * Mark a batch of image paths as seen on the server.
+ *
+ * @param {string[]} paths - Array of image URL strings (e.g. '/image?path=...')
+ * @returns {Promise<{success: boolean, total_scrolls: number, seen_count: number}>}
+ */
+export async function markSeenBatch(paths) {
+    return post('/api/seen/batch', { paths });
+}
+
+/**
+ * Get unseen images as URLs (all images not yet marked seen).
+ *
+ * @param {string} sortOrder - Optional sort order ('newest', 'oldest')
+ * @returns {Promise<string[]>} Array of image URL strings
+ */
+export async function getUnseenImages(sortOrder) {
+    if (sortOrder) {
+        return get(`/api/unseen/images?sort=${sortOrder}`);
+    }
+    return get('/api/unseen/images');
+}
+
+/**
+ * Get seen statistics.
+ *
+ * @returns {Promise<{seen_count: number, total_count: number, total_scrolls: number, percent_seen: number}>}
+ */
+export async function getSeenStats() {
+    return get('/api/seen/stats');
+}
+
+/**
+ * Reset all seen history.
+ *
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function resetSeen() {
+    return del('/api/seen', {});
 }
 
 // Default export with all API functions
@@ -348,4 +391,9 @@ export default {
     // Cache
     getCacheInfo,
     clearCache,
+    // Seen / Unseen
+    markSeenBatch,
+    getUnseenImages,
+    getSeenStats,
+    resetSeen,
 };

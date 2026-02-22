@@ -14,6 +14,7 @@ A TikTok-style vertical scrolling image viewer for your local photos. Scroll thr
 - **Jump to photo** - Quickly navigate to any photo by number
 - **Favorites** - Double-tap to favorite, filter to view only favorites
 - **Trash/Mark for Deletion** - Mark photos for deletion via menu, review and batch delete
+- **New Feed (Watch History)** - Dedicated "New" tab shows only photos you haven't scrolled past yet; tracks progress in Settings
 - **Performance optimized** - HTTP caching, image list caching, and video posters.
 - **Auto-Advance Mode** - Auto-scroll when video ends or after a configurable delay for photos
 - **Pull-to-Refresh** - Drag down on the top nav bar to refresh without losing your place (perfect for PWA/home-screen users)
@@ -74,7 +75,7 @@ You'll see output like:
 ==================================================
 ```
 
-> **Note:** Configuration files (`config.json`, `favorites.json`, `trash.json`) are created automatically on first launch and are gitignored.
+> **Note:** Configuration files (`config.json`, `favorites.json`, `trash.json`, `seen.json`) are created automatically on first launch and are gitignored.
 
 ### 3. Add Your Folders
 
@@ -154,11 +155,23 @@ curl -b cookies.txt -c cookies.txt -X POST http://localhost:7123/login \
 - **Heart icon** - Toggle favorite for current image (can unlike)
 - **Trash icon** - Toggle mark for deletion
 - **Bookmark icon** - Filter to show only favorites
+- **"New" tab** - Switch to the New feed showing only photos you haven't seen yet
 - **Shuffle icon** - Toggle shuffle mode
-- **Settings gear** - Go to folder management and trash review
-- **Hamburger Menu** - Sort images or jump to a speific image number
+- **Settings gear** - Go to folder management, trash review, and watch history stats
+- **Hamburger Menu** - Sort images or jump to a specific image number
 - **Search Icon** - Show all folders and search directly through them
 - **Tap folder name** - Filter to show only images from that folder
+
+## New Feed (Watch History)
+
+The **New** feed automatically tracks which photos you've scrolled past and shows only the ones you haven't reviewed yet.
+
+- **Automatic tracking** — Every time a photo becomes the active slide, it's marked as seen
+- **Also tracks** — Favoriting or trashing a photo immediately marks it as seen
+- **Persistent** — Seen history survives page reloads and browser restarts (stored in `seen.json`)
+- **Stats** — Open Settings → Library tab to see: how many photos you've seen, how many are new, total scrolls, and progress percentage
+- **Reset** — Tap "Reset Watch History" in Settings to clear all records and start fresh
+- **Empty state** — When you've seen everything, the New feed shows a "You're All Caught Up!" screen
 
 ## Keyboard Shortcuts
 
