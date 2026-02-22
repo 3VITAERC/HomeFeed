@@ -1,5 +1,5 @@
 /**
- * Centralized state management for LocalFeed.
+ * Centralized state management for HomeFeed.
  * All application state is stored and managed here.
  */
 

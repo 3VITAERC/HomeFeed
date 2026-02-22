@@ -1,13 +1,13 @@
 /**
- * Main application entry point for LocalFeed.
+ * Main application entry point for HomeFeed.
  * Initializes all components and sets up event handlers.
  */
 
 // Import state management
-import { state, BATCH_SIZE, IMAGE_POOL_BUFFER, getPreloadCount, isAnyModalOpen } from './state.js';
+import { state, IMAGE_POOL_BUFFER, getPreloadCount, isAnyModalOpen } from './state.js';
 
 // Import utilities
-import { extractPath, isGifUrl, isVideoUrl, isConvertedGifUrl, normalizePath } from './utils/path.js';
+import { extractPath, isGifUrl, isVideoUrl, normalizePath } from './utils/path.js';
 import { addVideoControls } from './utils/video.js';
 
 // Import viewport manager (replaces state.observer + state.gifObserver)
@@ -17,9 +17,7 @@ import {
     destroyObserver,
     recreateObserver,
     activateMediaIfCurrent,
-    activateSlideByIndex,
     toggleGlobalMute,
-    isAudioEnabled,
     preloadAudioForNextSlide,
     getScrollGeneration,
 } from './viewport.js';
@@ -29,22 +27,18 @@ import API from './api.js';
 
 // DOM Elements - initialized after DOM is ready
 let scrollContainer, noImages, noFavorites, noUnseen, jumpModal, jumpInput, jumpTotal;
-let jumpCancel, jumpGo, trashAnimation, exitFilterBtn, noTrash, exitTrashBtn, exitUnseenBtn;
+let jumpCancel, jumpGo, exitFilterBtn, noTrash, exitTrashBtn, exitUnseenBtn;
 let loadingOverlay;
 let heartBtn, trashBtn, filterBtn, filterBadge, shuffleBtn, infoBtn, settingsBtn;
 let noImagesSettingsBtn;
-let trashModal, trashModalClose, trashModalBody, trashCountInfo, viewTrashBtn, emptyTrashBtn;
+let trashModal, trashModalClose, trashCountInfo, viewTrashBtn, emptyTrashBtn;
 let deleteConfirmModal, deleteConfirmMessage, deleteCancelBtn, deleteConfirmBtn;
 let infoModal, infoModalBody, infoModalClose;
-let topNav, topNavFilter, topNavDropdown, topNavTabs, topNavSearch;
-let foldersModal, foldersModalClose, foldersModalBody, foldersSearchInput, foldersSortSelect, foldersList;
+let topNavFilter, topNavDropdown, topNavTabs, topNavSearch;
+let foldersModal, foldersModalClose, foldersSearchInput, foldersSortSelect, foldersList;
 let settingsModal, settingsModalClose;
 let shortcutsModal, shortcutsModalClose;
 let filePathDisplay;
-
-// Image pool management
-let imagePoolUpdatePending = false;
-let imagePoolRafId = null;
 
 // Folders modal state
 let leafFolders = [];
@@ -137,7 +131,6 @@ function initDOMElements() {
     jumpTotal = document.getElementById('jumpTotal');
     jumpCancel = document.getElementById('jumpCancel');
     jumpGo = document.getElementById('jumpGo');
-    trashAnimation = document.getElementById('trashAnimation');
     exitFilterBtn = document.getElementById('exitFilterBtn');
     noTrash = document.getElementById('noTrash');
     exitTrashBtn = document.getElementById('exitTrashBtn');
@@ -163,7 +156,6 @@ function initDOMElements() {
     // Modals
     trashModal = document.getElementById('trashModal');
     trashModalClose = document.getElementById('trashModalClose');
-    trashModalBody = document.getElementById('trashModalBody');
     trashCountInfo = document.getElementById('trashCountInfo');
     viewTrashBtn = document.getElementById('viewTrashBtn');
     emptyTrashBtn = document.getElementById('emptyTrashBtn');
@@ -184,7 +176,6 @@ function initDOMElements() {
     shortcutsModalClose = document.getElementById('shortcutsModalClose');
     
     // Top Nav
-    topNav = document.getElementById('topNav');
     topNavFilter = document.getElementById('topNavFilter');
     topNavDropdown = document.getElementById('topNavDropdown');
     topNavTabs = document.getElementById('topNavTabs');
@@ -193,7 +184,6 @@ function initDOMElements() {
     // Folders Modal
     foldersModal = document.getElementById('foldersModal');
     foldersModalClose = document.getElementById('foldersModalClose');
-    foldersModalBody = document.getElementById('foldersModalBody');
     foldersSearchInput = document.getElementById('foldersSearchInput');
     foldersSortSelect = document.getElementById('foldersSortSelect');
     foldersList = document.getElementById('foldersList');
@@ -1075,7 +1065,7 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
         activateMediaIfCurrent(slide);
     };
     
-    video.onerror = function(e) {
+    video.onerror = function() {
         if (loadTimeout) clearTimeout(loadTimeout);
         
         // Hide loading overlay on error too
@@ -1136,7 +1126,6 @@ function loadVideoForSlide(slide, src, isConvertedGif = false, isPriorityImage =
 // - initViewport() is called from init() with the _onSlideActivated callback
 // - observeSlide() is called from createSlide() for each new slide
 // - destroyObserver() / recreateObserver() are called from buildSlides()
-// The old setupObservers() and observeSlides() functions have been removed.
 
 // ============ Priority Loading ============
 
@@ -2248,28 +2237,6 @@ async function loadSettingsModalData() {
         if (dateSourceToggle) dateSourceToggle.checked = useCtime;
         if (dateSourceLabel) dateSourceLabel.textContent = useCtime ? 'Created Date' : 'Modified Date';
         
-        // Setup cache settings toggle
-        const cacheHeader = document.getElementById('cacheSettingsHeader');
-        const cacheContent = document.getElementById('cacheSettingsContent');
-        if (cacheHeader && cacheContent) {
-            cacheHeader.onclick = () => {
-                const isVisible = cacheContent.style.display !== 'none';
-                cacheContent.style.display = isVisible ? 'none' : 'block';
-                cacheHeader.classList.toggle('expanded', !isVisible);
-            };
-        }
-        
-        // Setup display settings toggle
-        const displayHeader = document.getElementById('displaySettingsHeader');
-        const displayContent = document.getElementById('displaySettingsContent');
-        if (displayHeader && displayContent) {
-            displayHeader.onclick = () => {
-                const isVisible = displayContent.style.display !== 'none';
-                displayContent.style.display = isVisible ? 'none' : 'block';
-                displayHeader.classList.toggle('expanded', !isVisible);
-            };
-        }
-        
         // Setup add folder form
         const addFolderForm = document.getElementById('settingsAddFolderForm');
         if (addFolderForm) {
@@ -2307,9 +2274,9 @@ async function loadSettingsModalData() {
         }
         
         // Setup trash button
-        const trashBtn = document.getElementById('settingsTrashBtn');
-        if (trashBtn) {
-            trashBtn.onclick = showTrashModal;
+        const settingsTrashBtn = document.getElementById('settingsTrashBtn');
+        if (settingsTrashBtn) {
+            settingsTrashBtn.onclick = showTrashModal;
         }
         
         // Update trash badge
@@ -2995,8 +2962,6 @@ async function reloadImages(sortOrder) {
 function setupDoubleTapToLike() {
     let lastTapTime = 0;
     let lastTapTarget = null;
-    let lastTapX = 0;
-    let lastTapY = 0;
     let tapCount = 0;
     let singleTapTimeout = null;
     const TAP_WINDOW = 500; // 0.5 seconds for subsequent taps
@@ -3035,14 +3000,10 @@ function setupDoubleTapToLike() {
             
             tapCount++;
             lastTapTime = now;
-            lastTapX = e.clientX;
-            lastTapY = e.clientY;
         } else {
             // First tap - wait to see if there's a second tap
             lastTapTime = now;
             lastTapTarget = slide;
-            lastTapX = e.clientX;
-            lastTapY = e.clientY;
             tapCount = 1;
             
             // After the window expires, if there was only one tap, handle as single tap
@@ -3298,13 +3259,11 @@ function setupPullToRefresh() {
     let isDragging    = false;
     let isVertical    = null;  // null = undecided, true = vertical, false = horizontal
     let thresholdMet  = false;
-    let currentDelta  = 0;
 
     function resetDrag() {
         isDragging   = false;
         isVertical   = null;
         thresholdMet = false;
-        currentDelta = 0;
     }
 
     function applySnapBack() {
@@ -3337,7 +3296,6 @@ function setupPullToRefresh() {
         isDragging   = true;
         isVertical   = null;
         thresholdMet = false;
-        currentDelta = 0;
     }, { passive: true });
 
     navEl.addEventListener('touchmove', (e) => {
@@ -3356,8 +3314,6 @@ function setupPullToRefresh() {
             if (isVertical === false || dy <= 0) resetDrag();
             return;
         }
-
-        currentDelta = dy;
 
         // Rubber-band: drag slows as it approaches MAX_DRAG
         const progress   = dy / MAX_DRAG;

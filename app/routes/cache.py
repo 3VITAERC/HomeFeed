@@ -1,5 +1,5 @@
 """
-Cache and settings routes for LocalFeed.
+Cache and settings routes for HomeFeed.
 Handles cache management and application settings.
 """
 

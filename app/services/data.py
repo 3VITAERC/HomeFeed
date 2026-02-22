@@ -1,5 +1,5 @@
 """
-Data management services for LocalFeed.
+Data management services for HomeFeed.
 Handles loading and saving configuration, favorites, trash, and seen data.
 """
 

@@ -1,5 +1,5 @@
 /**
- * GIF animation control utilities for LocalFeed.
+ * GIF animation control utilities for HomeFeed.
  * Handles freezing and unfreezing GIFs to reduce CPU usage.
  */
 
@@ -9,11 +9,11 @@ import { isGifUrl } from './path.js';
 const gifFreezeCache = new Map();
 
 /**
- * Freeze a GIF by replacing it with a static first frame
- * This reduces CPU usage by stopping animation
- * Note: With WebM conversion, this now handles video elements too
- * 
- * @param {HTMLImageElement|HTMLVideoElement} element - The GIF or video element to freeze
+ * Freeze a GIF by replacing it with a static first frame.
+ * Reduces CPU usage by stopping animation when the slide is not active.
+ * Also handles video elements for GIFs served as WebM by the server (pause instead of canvas capture).
+ *
+ * @param {HTMLImageElement|HTMLVideoElement} element - The GIF image or server-converted WebM video element
  */
 export function freezeGif(element) {
     // Handle video elements (converted GIFs)
@@ -59,10 +59,10 @@ export function freezeGif(element) {
 }
 
 /**
- * Unfreeze a GIF by restoring the original animated source
- * Note: With WebM conversion, this now handles video elements too
- * 
- * @param {HTMLImageElement|HTMLVideoElement} element - The GIF or video element to unfreeze
+ * Unfreeze a GIF by restoring the original animated source.
+ * Also handles video elements for GIFs served as WebM by the server (resume playback instead of src swap).
+ *
+ * @param {HTMLImageElement|HTMLVideoElement} element - The GIF image or server-converted WebM video element
  */
 export function unfreezeGif(element) {
     // Handle video elements (converted GIFs)

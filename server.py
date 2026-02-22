@@ -29,7 +29,7 @@ def get_local_ip():
     hostname = socket.gethostname()
     try:
         return socket.gethostbyname(hostname)
-    except:
+    except OSError:
         return "localhost"
 
 

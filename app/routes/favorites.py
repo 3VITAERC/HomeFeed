@@ -1,5 +1,5 @@
 """
-Favorites management routes for LocalFeed.
+Favorites management routes for HomeFeed.
 Handles adding, removing, and listing favorite images.
 """
 

@@ -1,5 +1,5 @@
 """
-Folder management routes for LocalFeed.
+Folder management routes for HomeFeed.
 Handles adding, removing, and listing configured folders.
 """
 

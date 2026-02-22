@@ -1,5 +1,5 @@
 """
-Image list caching service for LocalFeed.
+Image list caching service for HomeFeed.
 Provides cached access to the list of images from configured folders.
 """
 

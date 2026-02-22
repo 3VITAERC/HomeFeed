@@ -1,5 +1,5 @@
 /**
- * Path utilities for LocalFeed.
+ * Path utilities for HomeFeed.
  * Handles URL parsing and path manipulation.
  */
 

@@ -1,5 +1,5 @@
 /**
- * API client for LocalFeed.
+ * API client for HomeFeed.
  * Provides functions for all backend API calls.
  */
 

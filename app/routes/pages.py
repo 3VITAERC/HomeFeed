@@ -1,5 +1,5 @@
 """
-Page routes for LocalFeed.
+Page routes for HomeFeed.
 Handles serving HTML pages and static files.
 """
 
@@ -23,14 +23,14 @@ def index():
 
 @pages_bp.route('/settings')
 def settings():
-    """Settings page - redirect to main page (settings now in modal)."""
+    """Legacy URL: serves main page for backward compatibility with old bookmarks."""
     index_path = os.path.join(PROJECT_ROOT, 'static', 'index.html')
     return send_file(index_path)
 
 
 @pages_bp.route('/scroll')
 def scroll_view():
-    """Main scroll view."""
+    """Legacy URL: serves main page for backward compatibility with old bookmarks."""
     index_path = os.path.join(PROJECT_ROOT, 'static', 'index.html')
     return send_file(index_path)
 

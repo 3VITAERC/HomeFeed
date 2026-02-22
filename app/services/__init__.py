@@ -1,5 +1,5 @@
 """
-Services module for LocalFeed.
+Services module for HomeFeed.
 Contains business logic for path handling, caching, optimizations, and auth.
 """
 
@@ -23,7 +23,6 @@ from app.services.optimizations import (
     get_thumbnail_path,
     create_thumbnail,
     create_video_poster,
-    get_cache_key,
 )
 from app.services.data import (
     load_config,
@@ -67,7 +66,6 @@ __all__ = [
     'get_thumbnail_path',
     'create_thumbnail',
     'create_video_poster',
-    'get_cache_key',
     # Data management
     'load_config',
     'save_config',

@@ -1,5 +1,5 @@
 """
-Routes module for LocalFeed.
+Routes module for HomeFeed.
 Contains all Flask blueprints for API endpoints.
 """
 

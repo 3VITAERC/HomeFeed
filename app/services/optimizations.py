@@ -1,5 +1,5 @@
 """
-Image optimization services for LocalFeed.
+Image optimization services for HomeFeed.
 Handles thumbnail generation and video poster extraction.
 """
 
@@ -169,18 +169,3 @@ def create_video_poster(
     except Exception as e:
         logger.error("Error extracting video poster %s: %s", video_path, e)
         return False
-
-
-def get_cache_key(file_path: str, optimization_type: str) -> str:
-    """Generate a cache key for an optimized file.
-    
-    Args:
-        file_path: Path to the source file
-        optimization_type: Type of optimization (e.g., 'thumb', 'webm', 'poster')
-        
-    Returns:
-        A unique cache key string
-    """
-    mtime = os.path.getmtime(file_path)
-    size = os.path.getsize(file_path)
-    return hashlib.md5(f"{file_path}_{mtime}_{size}_{optimization_type}".encode()).hexdigest()

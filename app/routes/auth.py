@@ -1,5 +1,5 @@
 """
-Authentication routes for LocalFeed.
+Authentication routes for HomeFeed.
 
 Provides login/logout endpoints and login page UI.
 """
@@ -64,18 +64,18 @@ def login_submit():
     if not validate_csrf_token(csrf_token):
         if request.is_json:
             return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 403
-        return render_template('login.html', error='Invalid request', csrf_token=generate_csrf_token()), 403
-    
+        return redirect(url_for('auth.login_page'))
+
     # Attempt login
     if session_login(password):
         if request.is_json:
             return jsonify({'success': True, 'redirect': url_for('pages.index')})
         return redirect(url_for('pages.index'))
-    
+
     # Login failed
     if request.is_json:
         return jsonify({'success': False, 'error': 'Invalid password'}), 401
-    return render_template('login.html', error='Invalid password', csrf_token=generate_csrf_token()), 401
+    return redirect(url_for('auth.login_page'))
 
 
 @auth_bp.route('/logout', methods=['POST'])

@@ -1,5 +1,5 @@
 /**
- * Video control utilities for LocalFeed.
+ * Video control utilities for HomeFeed.
  * Handles video playback, mute toggle, and progress bar.
  */
 

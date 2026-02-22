@@ -1,5 +1,5 @@
 /**
- * ViewportManager — unified viewport and media control for LocalFeed.
+ * ViewportManager — unified viewport and media control for HomeFeed.
  *
  * Responsibilities:
  *   - Single IntersectionObserver for all slides (replaces state.observer + state.gifObserver)

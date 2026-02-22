@@ -1,5 +1,5 @@
 """
-Path utilities for LocalFeed.
+Path utilities for HomeFeed.
 Handles path validation, normalization, and security checks.
 """
 

@@ -1,5 +1,5 @@
 """
-Trash management routes for LocalFeed.
+Trash management routes for HomeFeed.
 Handles marking, unmarking, and deleting images.
 """
 

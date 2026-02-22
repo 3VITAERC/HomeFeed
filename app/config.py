@@ -1,5 +1,5 @@
 """
-Configuration constants and settings for LocalFeed.
+Configuration constants and settings for HomeFeed.
 """
 
 import os

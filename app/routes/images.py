@@ -1,5 +1,5 @@
 """
-Image serving routes for LocalFeed.
+Image serving routes for HomeFeed.
 Handles serving images, thumbnails, GIF conversions, and video posters.
 """
 
