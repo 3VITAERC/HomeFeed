@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 from app.config import (
     CACHE_TTL,
+    CACHE_TTL_HDD,
     SUPPORTED_FORMATS,
     VIDEO_FORMATS,
     MAX_VIDEO_SIZE,
@@ -147,7 +148,10 @@ def _is_cache_valid_with_date_source(date_source: str) -> bool:
         return False
 
     # Check TTL
-    if time.time() - _image_cache['timestamp'] > CACHE_TTL:
+    from app.services.data import get_optimization_settings
+    settings = get_optimization_settings()
+    effective_ttl = CACHE_TTL_HDD if settings.get('hdd_friendly', False) else CACHE_TTL
+    if time.time() - _image_cache['timestamp'] > effective_ttl:
         return False
 
     # Import here to avoid circular imports

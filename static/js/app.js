@@ -422,7 +422,20 @@ function setupEventListeners() {
             }
         });
     }
-    
+
+    // HDD Friendly toggle
+    const toggleHDDFriendly = document.getElementById('toggleHDDFriendly');
+    if (toggleHDDFriendly) {
+        toggleHDDFriendly.addEventListener('change', async (e) => {
+            try {
+                await API.updateSettings({ optimizations: { hdd_friendly: e.target.checked } });
+                state.optimizations.hdd_friendly = e.target.checked;
+            } catch (error) {
+                console.error('Failed to save HDD friendly setting:', error);
+            }
+        });
+    }
+
     // Auto-advance indicator click (toggles off)
     const autoAdvanceIndicator = document.getElementById('autoAdvanceIndicator');
     if (autoAdvanceIndicator) {
@@ -2219,6 +2232,7 @@ async function loadSettingsModalData() {
         const preloadDistanceValue = document.getElementById('preloadDistanceValue');
         const dateSourceToggle = document.getElementById('toggleDateSource');
         const dateSourceLabel = document.getElementById('dateSourceLabel');
+        const hddFriendlyToggle = document.getElementById('toggleHDDFriendly');
 
         if (thumbnailToggle) thumbnailToggle.checked = settings.optimizations?.thumbnail_cache || false;
         if (videoPosterToggle) videoPosterToggle.checked = settings.optimizations?.video_poster_cache || false;
@@ -2228,6 +2242,7 @@ async function loadSettingsModalData() {
         if (autoAdvanceDelayValue) autoAdvanceDelayValue.textContent = settings.optimizations?.auto_advance_delay ?? 3;
         if (preloadDistanceSlider) preloadDistanceSlider.value = settings.optimizations?.preload_distance ?? 3;
         if (preloadDistanceValue) preloadDistanceValue.textContent = settings.optimizations?.preload_distance ?? 3;
+        if (hddFriendlyToggle) hddFriendlyToggle.checked = settings.optimizations?.hdd_friendly || false;
         // date_source: 'ctime' → checkbox on, 'mtime' (default) → checkbox off
         const useCtime = (settings.optimizations?.date_source ?? 'mtime') === 'ctime';
         if (dateSourceToggle) dateSourceToggle.checked = useCtime;

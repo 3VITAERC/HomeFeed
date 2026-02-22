@@ -29,6 +29,7 @@ THUMBNAIL_QUALITY = 85  # WebP quality (0-100)
 
 # Image list cache settings
 CACHE_TTL = 30  # seconds
+CACHE_TTL_HDD = 300  # seconds — used when hdd_friendly is enabled
 
 # Default optimization settings
 DEFAULT_OPTIMIZATIONS: Dict[str, Any] = {
@@ -38,7 +39,8 @@ DEFAULT_OPTIMIZATIONS: Dict[str, Any] = {
     'auto_advance': False,
     'auto_advance_delay': 3,
     'preload_distance': 3,  # Number of slides to preload ahead (0-10)
-    'date_source': 'mtime'  # Filesystem fallback when EXIF date absent: 'mtime' or 'ctime'
+    'date_source': 'mtime',  # Filesystem fallback when EXIF date absent: 'mtime' or 'ctime'
+    'hdd_friendly': False,
 }
 
 # Mime types for image serving
