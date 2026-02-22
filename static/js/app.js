@@ -370,6 +370,29 @@ function setupEventListeners() {
         });
     }
     
+    // Date source toggle (Modified Date vs Created Date filesystem fallback)
+    const dateSourceToggle = document.getElementById('toggleDateSource');
+    if (dateSourceToggle) {
+        dateSourceToggle.addEventListener('change', async (e) => {
+            const newSource = e.target.checked ? 'ctime' : 'mtime';
+            try {
+                await API.updateSettings({ optimizations: { date_source: newSource } });
+                state.optimizations.date_source = newSource;
+                // Update the label next to the toggle
+                const dateSourceLabel = document.getElementById('dateSourceLabel');
+                if (dateSourceLabel) {
+                    dateSourceLabel.textContent = e.target.checked ? 'Created Date' : 'Modified Date';
+                }
+                console.log('Date source setting saved:', newSource);
+                // Reload images — backend cache was busted by the settings API
+                showLoadingOverlay();
+                await reloadImages(state.currentSortOrder);
+            } catch (error) {
+                console.error('Failed to save date source setting:', error);
+            }
+        });
+    }
+
     // Preload distance slider
     const preloadDistanceSlider = document.getElementById('preloadDistanceSlider');
     const preloadDistanceValue = document.getElementById('preloadDistanceValue');
@@ -2030,7 +2053,9 @@ async function loadSettingsModalData() {
         const autoAdvanceDelayValue = document.getElementById('autoAdvanceDelayValue');
         const preloadDistanceSlider = document.getElementById('preloadDistanceSlider');
         const preloadDistanceValue = document.getElementById('preloadDistanceValue');
-        
+        const dateSourceToggle = document.getElementById('toggleDateSource');
+        const dateSourceLabel = document.getElementById('dateSourceLabel');
+
         if (thumbnailToggle) thumbnailToggle.checked = settings.optimizations?.thumbnail_cache || false;
         if (videoPosterToggle) videoPosterToggle.checked = settings.optimizations?.video_poster_cache || false;
         if (fillScreenToggle) fillScreenToggle.checked = settings.optimizations?.fill_screen || false;
@@ -2039,6 +2064,10 @@ async function loadSettingsModalData() {
         if (autoAdvanceDelayValue) autoAdvanceDelayValue.textContent = settings.optimizations?.auto_advance_delay ?? 3;
         if (preloadDistanceSlider) preloadDistanceSlider.value = settings.optimizations?.preload_distance ?? 3;
         if (preloadDistanceValue) preloadDistanceValue.textContent = settings.optimizations?.preload_distance ?? 3;
+        // date_source: 'ctime' → checkbox on, 'mtime' (default) → checkbox off
+        const useCtime = (settings.optimizations?.date_source ?? 'mtime') === 'ctime';
+        if (dateSourceToggle) dateSourceToggle.checked = useCtime;
+        if (dateSourceLabel) dateSourceLabel.textContent = useCtime ? 'Created Date' : 'Modified Date';
         
         // Setup cache settings toggle
         const cacheHeader = document.getElementById('cacheSettingsHeader');

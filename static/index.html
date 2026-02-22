@@ -395,6 +395,21 @@
                         </div>
                         <input type="range" id="autoAdvanceDelaySlider" min="1" max="10" value="3" class="settings-slider">
                     </div>
+
+                    <!-- Date Fallback Priority -->
+                    <div class="settings-toggle-item">
+                        <div class="settings-toggle-info">
+                            <div class="settings-toggle-title">Date Fallback Priority</div>
+                            <div class="settings-toggle-desc">When a photo has no EXIF date, sort by: <strong id="dateSourceLabel">Modified Date</strong></div>
+                        </div>
+                        <label class="settings-toggle">
+                            <input type="checkbox" id="toggleDateSource">
+                            <span class="settings-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="settings-sub-desc" id="dateSourceSubDesc">
+                        Off = Modified Date first &nbsp;|&nbsp; On = Created Date first
+                    </div>
                 </div>
                 
                 <!-- Performance Tab Content -->

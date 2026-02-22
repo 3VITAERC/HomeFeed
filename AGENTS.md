@@ -254,12 +254,39 @@ CACHE_TTL = 30  # seconds
 - Cache invalidated by TTL (30s) OR folder modification time change
 - `get_all_images()` returns cached list or rescans
 
+### Sort Date Hierarchy
+
+Images are sorted by an *effective date* computed per-file at scan time and cached alongside the image path.  The hierarchy is:
+
+| Priority | Source | Condition |
+|----------|--------|-----------|
+| 1 | EXIF `DateTimeOriginal` (tag 36867) | Shutter time — most accurate; only for image files with Pillow installed |
+| 2 | EXIF `DateTimeDigitized` (tag 36868) | Digitization time — good for scanned photos |
+| 3 | Filesystem fallback (user-configurable) | When no EXIF date is available, or for video files |
+
+The **filesystem fallback order** is controlled by the `date_source` setting (Display tab in Settings):
+- `'mtime'` (default) → modification time first, creation time as last resort
+- `'ctime'` → creation time first, modification time as last resort
+
+**Key implementation details:**
+- `get_effective_date(path, date_source)` in `image_cache.py` returns a Unix timestamp following the hierarchy
+- EXIF is skipped entirely for video files (`.m4v`, `.mp4`, `.mov`)
+- If Pillow is not installed, silently falls through to filesystem dates
+- When `date_source` changes, `invalidate_cache()` is called by the settings route so effective dates are recomputed on the next request
+- `get_leaf_folders()` reuses the cached `effective_dates` dict (populated during `get_all_images()`) for `newest_mtime`, so folder ordering in the nav is consistent with the main feed
+
+```python
+# In image_cache.py
+_image_cache['effective_dates'] = {path: effective_date, ...}  # populated during scan
+_image_cache['date_source'] = date_source                       # used for cache invalidation check
+```
+
 ### Image List Caching Performance
 
 The image cache has been optimized for large photo libraries:
 
 - **Folder mtime check:** Uses `os.scandir()` to check only the folder itself and immediate subdirectories (one level deep), not a full recursive walk
-- **Single-pass mtime collection:** During folder scan, mtime is collected once and cached in `(path, mtime)` tuples, avoiding double filesystem calls during sorting
+- **Single-pass effective date collection:** During folder scan, `get_effective_date()` is called once per file and stored in `(path, effective_date)` tuples, avoiding double filesystem/EXIF calls during sorting
 - **Thread-safe writes:** All JSON file saves use `FileLock` to prevent corruption with multiple workers
 
 ### Path Security

@@ -16,6 +16,7 @@ from app.services.data import (
     get_optimization_settings,
     save_optimization_settings,
 )
+from app.services.image_cache import invalidate_cache
 
 
 cache_bp = Blueprint('cache', __name__)
@@ -36,25 +37,37 @@ def update_settings():
     """Update user settings."""
     data = request.get_json()
     config = load_config()
-    
+
     if 'shuffle' in data:
         config['shuffle'] = bool(data['shuffle'])
-    
+
     if 'optimizations' in data:
         # Update only provided optimization settings
         current_optimizations = get_optimization_settings()
+        date_source_changed = False
+
         for key, value in data['optimizations'].items():
             if key in DEFAULT_OPTIMIZATIONS:
-                # Handle integer settings (auto_advance_delay, preload_distance)
-                if key in ('auto_advance_delay', 'preload_distance'):
+                if key == 'date_source':
+                    # Validate: only 'mtime' or 'ctime' are accepted
+                    if value in ('mtime', 'ctime'):
+                        if current_optimizations.get('date_source') != value:
+                            date_source_changed = True
+                        current_optimizations['date_source'] = value
+                elif key in ('auto_advance_delay', 'preload_distance'):
                     current_optimizations[key] = int(value)
                 else:
                     current_optimizations[key] = bool(value)
+
         config['optimizations'] = current_optimizations
-    
+
+        # Bust image cache when date_source changes — effective dates must be recomputed
+        if date_source_changed:
+            invalidate_cache()
+
     save_config(config)
     return jsonify({
-        'success': True, 
+        'success': True,
         'settings': {
             'shuffle': config.get('shuffle', False),
             'optimizations': get_optimization_settings()

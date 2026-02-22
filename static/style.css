@@ -1722,6 +1722,14 @@ html, body {
     color: rgba(255, 255, 255, 0.5);
 }
 
+/* Supplementary hint line below a toggle row */
+.settings-sub-desc {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.35);
+    padding: 0 0 10px 0;
+    margin-top: -6px;
+}
+
 /* Cache row (for cache size + clear button) */
 .settings-cache-row {
     display: flex;

@@ -36,7 +36,8 @@ DEFAULT_OPTIMIZATIONS: Dict[str, Any] = {
     'fill_screen': False,
     'auto_advance': False,
     'auto_advance_delay': 3,
-    'preload_distance': 3  # Number of slides to preload ahead (0-10)
+    'preload_distance': 3,  # Number of slides to preload ahead (0-10)
+    'date_source': 'mtime'  # Filesystem fallback when EXIF date absent: 'mtime' or 'ctime'
 }
 
 # Mime types for image serving
