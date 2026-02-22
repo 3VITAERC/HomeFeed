@@ -815,13 +815,19 @@ function loadImageForSlide(slide, isPriorityImage = false, isNextSlide = false, 
     const src = slide.dataset.src;
     if (!src) return;
 
+    // Guard: skip if slide already has content (prevents race conditions between
+    // needsLoad and sequentialPreload calling loadImageForSlide simultaneously)
+    if (slide.querySelector('img, video')) {
+        return;
+    }
+
     // Second-line distance guard: skip if slide is too far from current position.
     // isPriorityImage bypasses this so initial page load and mode transitions always work.
     if (!isPriorityImage) {
         const slideIndex = parseInt(slide.dataset.index, 10);
         if (Math.abs(slideIndex - state.currentIndex) > IMAGE_POOL_BUFFER) return;
     }
-    
+
     if (isVideoUrl(src)) {
         loadVideoForSlide(slide, src, false, isPriorityImage, isNextSlide);
     } else if (isGifUrl(src)) {

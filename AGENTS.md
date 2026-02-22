@@ -487,29 +487,36 @@ if (isNextSlide) {
 
 This forces the browser to decode and paint the first frame, even while paused. Works on all browsers including iOS Safari.
 
-### Audio Preloading
+### Audio Architecture (Web Audio API)
 
-Videos use a **dual audio element** architecture for instant audio:
+Videos use the **Web Audio API** to route audio directly from the video element without a second HTTP download:
 
 ```javascript
 // In viewport.js
-let _audioEl = null;           // Current video's audio
-let _nextAudioEl = null;       // Preloaded for +1 video
-let _nextAudioSrc = null;      // Track what's loaded
-let _scrollGeneration = 0;     // Incremented on every slide change; stale preload chains check this
+let _audioContext = null;      // Web Audio AudioContext (created on first user gesture)
+let _gainNode = null;          // GainNode for mute/unmute control
+let _activeSourceNode = null;  // MediaElementAudioSourceNode for current video
+let _videoSourceNodes = null;  // WeakMap<HTMLVideoElement, MediaElementAudioSourceNode>
 
-// During sequentialPreload():
-preloadAudioForNextSlide(videoSrc);  // Loads into _nextAudioEl
+// On audio enable:
+const sourceNode = _audioContext.createMediaElementSource(video);
+sourceNode.connect(_gainNode);  // Route: video audio → gain → speakers
 
-// On scroll:
-// Swap _audioEl ↔ _nextAudioEl instead of loading fresh
+// On mute toggle:
+_gainNode.gain.value = 0.0;     // Mute
+_gainNode.gain.value = 1.0;     // Unmute
 ```
 
-**Key implementation details:**
-- URL normalization handles relative vs absolute URLs
-- Play/pause trick forces actual audio buffering
-- `canplay` event handling for currentTime sync
-- Sync interval: 100ms with 0.15s drift threshold
+**Architecture benefits:**
+- **No duplicate HTTP requests** — Old approach: separate `<audio>` element downloading same file (2x bandwidth). New approach: Web Audio API taps video's already-downloading stream.
+- **No time-sync complexity** — Audio comes directly from video source, always in sync
+- **Single-call limitation** — `createMediaElementSource()` can only be called once per video element; nodes are cached in `_videoSourceNodes` WeakMap for efficient reconnection
+
+**Chrome compatibility:**
+- Chrome requires `video.muted = false` for audio data to flow to the Web Audio graph (even when video's direct speaker output is suppressed)
+- Set in `_attachAudioToActiveVideo()` before/after source node creation
+- Safari/Firefox: `muted` attribute doesn't affect Web Audio capture (captures raw decoded audio)
+- After `createMediaElementSource()`, the browser suppresses the video element's direct speaker output regardless of `muted`, so no double-audio occurs
 
 ### Request Cancellation
 
@@ -669,6 +676,13 @@ function normalizePath(path) {
     - The slide becomes an empty shell — `needsLoad` will reload it when user scrolls back
     - Content reloads from browser disk cache (instant for local server)
     - Do NOT treat a blank slide after scrolling back as a bug; it's working correctly
+
+11. **Web Audio API audio routing**
+    - The audio system uses `MediaElementAudioSourceNode` to route the video's audio through Web Audio
+    - `createMediaElementSource()` can only be called ONCE per video element — nodes are cached in `_videoSourceNodes`
+    - Chrome specifically requires `video.muted = false` for audio to flow to the Web Audio graph (Safari/Firefox don't have this restriction)
+    - The `muted` attribute only affects the video element's DIRECT speaker output, which is suppressed by Web Audio anyway — so setting `muted=false` doesn't cause double-audio
+    - Do NOT create a separate `<audio>` element as an alternative; the Web Audio approach eliminates duplicate HTTP requests
 
 ---
 
