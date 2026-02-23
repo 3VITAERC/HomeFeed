@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HomeFeed - Who's watching?</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #000;
+            --bg-card: #141414;
+            --bg-card-hover: #1f1f1f;
+            --bg-input: #1a1a1a;
+            --text-primary: #fff;
+            --text-secondary: #888;
+            --accent: #fe2c55;
+            --accent-hover: #e0254c;
+            --danger: #ff4444;
+            --border: #333;
+        }
+
+        html, body {
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow-x: hidden;
+        }
+
+        /* ---- Header ---- */
+        .page-header {
+            text-align: center;
+            padding: 60px 20px 40px;
+        }
+
+        .page-header h1 {
+            font-size: clamp(22px, 5vw, 36px);
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            color: var(--text-primary);
+        }
+
+        /* ---- Profile grid ---- */
+        .profiles-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 24px;
+            padding: 0 20px 60px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .profile-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: transform 0.15s ease;
+            width: 120px;
+        }
+
+        .profile-card:hover {
+            transform: scale(1.05);
+        }
+
+        .profile-card:active {
+            transform: scale(0.97);
+        }
+
+        .profile-avatar {
+            width: 96px;
+            height: 96px;
+            border-radius: 8px;
+            background: var(--bg-card);
+            border: 3px solid transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            transition: border-color 0.15s ease;
+            user-select: none;
+        }
+
+        .profile-card:hover .profile-avatar {
+            border-color: var(--text-primary);
+        }
+
+        .profile-name {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-align: center;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .profile-card:hover .profile-name {
+            color: var(--text-primary);
+        }
+
+        /* Lock badge for password-protected profiles */
+        .profile-avatar-wrap {
+            position: relative;
+        }
+
+        .lock-badge {
+            position: absolute;
+            bottom: -4px;
+            right: -4px;
+            background: rgba(0,0,0,0.8);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+        }
+
+        /* Pencil edit icon on profile cards (admin only) */
+        .edit-pencil {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: rgba(20,20,20,0.9);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.15s, border-color 0.15s;
+            z-index: 2;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .profile-card:hover .edit-pencil {
+            opacity: 1;
+        }
+
+        .edit-pencil:hover {
+            border-color: var(--text-primary);
+        }
+
+        /* ---- Add Profile card ---- */
+        .add-profile-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            width: 120px;
+        }
+
+        .add-profile-card .profile-avatar {
+            border: 2px dashed var(--border);
+            background: transparent;
+            font-size: 36px;
+            color: var(--text-secondary);
+        }
+
+        .add-profile-card:hover .profile-avatar {
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+        }
+
+        .add-profile-card .profile-name {
+            color: var(--text-secondary);
+        }
+
+        .add-profile-card:hover .profile-name {
+            color: var(--text-primary);
+        }
+
+        /* ---- Manage link ---- */
+        .manage-link {
+            text-align: center;
+            padding-bottom: 40px;
+        }
+
+        .manage-btn {
+            background: transparent;
+            border: 1px solid var(--text-secondary);
+            color: var(--text-secondary);
+            padding: 10px 28px;
+            font-size: 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: border-color 0.15s, color 0.15s;
+        }
+
+        .manage-btn:hover {
+            border-color: var(--text-primary);
+            color: var(--text-primary);
+        }
+
+        /* ---- Password modal ---- */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .modal-overlay.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .modal-box {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 36px 28px;
+            width: 100%;
+            max-width: 380px;
+            text-align: center;
+        }
+
+        .modal-avatar {
+            font-size: 56px;
+            margin-bottom: 12px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .modal-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .modal-input {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-size: 16px;
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color 0.2s;
+            margin-bottom: 16px;
+        }
+
+        .modal-input:focus {
+            border-color: var(--accent);
+        }
+
+        .modal-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .modal-error {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid var(--danger);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--danger);
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .modal-error.visible {
+            display: block;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-cancel {
+            flex: 1;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 13px;
+            font-size: 15px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }
+
+        .btn-cancel:hover {
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+        }
+
+        .btn-enter {
+            flex: 2;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            padding: 13px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-enter:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-enter:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: none;
+        }
+
+        .btn-enter.loading .spinner {
+            display: block;
+        }
+
+        .btn-enter.loading .btn-text {
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ---- Manage / Create Profile modal ---- */
+        .create-form {
+            text-align: left;
+        }
+
+        .form-row {
+            margin-bottom: 16px;
+        }
+
+        .form-row label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-row input,
+        .form-row select {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-size: 15px;
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-row input:focus,
+        .form-row select:focus {
+            border-color: var(--accent);
+        }
+
+        select option {
+            background: #1a1a1a;
+        }
+
+        /* Emoji picker */
+        .emoji-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .emoji-btn {
+            width: 40px;
+            height: 40px;
+            font-size: 22px;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            background: var(--bg-input);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: border-color 0.15s;
+        }
+
+        .emoji-btn.selected {
+            border-color: var(--accent);
+        }
+
+        .emoji-btn:hover {
+            border-color: var(--text-secondary);
+        }
+
+        /* Profile list in manage view */
+        .profile-list-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .profile-list-item:last-child {
+            border-bottom: none;
+        }
+
+        .profile-list-emoji {
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+
+        .profile-list-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .profile-list-name {
+            font-size: 15px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .profile-list-role {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .profile-list-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .icon-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }
+
+        .icon-btn:hover {
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+        }
+
+        .icon-btn.danger:hover {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        .modal-section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .empty-state p {
+            color: var(--text-secondary);
+            font-size: 15px;
+            margin-bottom: 20px;
+        }
+
+        /* First-run notice */
+        .first-run-notice {
+            text-align: center;
+            max-width: 440px;
+            margin: 0 auto 40px;
+            padding: 0 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* ---- Exit button ---- */
+        .profile-exit-btn {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+            z-index: 10;
+        }
+
+        .profile-exit-btn:hover {
+            border-color: var(--text-primary);
+            color: var(--text-primary);
+        }
+
+        /* ---- Success hint toast ---- */
+        .success-hint {
+            position: fixed;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30,30,30,0.95);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 12px 24px;
+            font-size: 14px;
+            color: var(--text-primary);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 50;
+        }
+
+        .success-hint.visible {
+            opacity: 1;
+        }
+
+        /* ---- Disabled Add Profile card ---- */
+        .add-profile-card.disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* ---- Disable Profiles toggle ---- */
+        .disable-profiles-section {
+            max-width: 440px;
+            margin: 0 auto 40px;
+            padding: 20px;
+            background: var(--bg-card);
+            border-radius: 12px;
+        }
+
+        .disable-profiles-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .disable-profiles-info {
+            flex: 1;
+        }
+
+        .disable-profiles-title {
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .disable-profiles-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .disable-profiles-note {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Settings toggle switch */
+        .settings-toggle {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 28px;
+            flex-shrink: 0;
+        }
+
+        .settings-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .settings-toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--border);
+            transition: .3s;
+            border-radius: 28px;
+        }
+
+        .settings-toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        .settings-toggle input:checked + .settings-toggle-slider {
+            background-color: var(--accent);
+        }
+
+        .settings-toggle input:checked + .settings-toggle-slider:before {
+            transform: translateX(20px);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Exit / back button -->
+    <button class="profile-exit-btn" id="profileExitBtn" title="Back to HomeFeed" aria-label="Back to HomeFeed">✕</button>
+
+    <!-- Success toast -->
+    <div class="success-hint" id="successHint"></div>
+
+    <div class="page-header">
+        <h1>Who's watching?</h1>
+    </div>
+
+    <!-- Enable Profiles toggle (admin only) - must be ON before adding profiles -->
+    <div class="disable-profiles-section" id="enableProfilesSection" style="display:none">
+        <div class="disable-profiles-toggle">
+            <div class="disable-profiles-info">
+                <div class="disable-profiles-title">Enable Profiles</div>
+                <div class="disable-profiles-desc">Show "Who's watching?" after login to keep separate feeds per person</div>
+            </div>
+            <label class="settings-toggle">
+                <input type="checkbox" id="enableProfilesToggle">
+                <span class="settings-toggle-slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <!-- First-run notice (shown when no profiles exist yet) -->
+    <div class="first-run-notice" id="firstRunNotice" style="display:none">
+        <p>Create your first profile to get started. Each profile has its own favorites, watch history, and folder configuration.</p>
+    </div>
+
+    <div class="profiles-grid" id="profilesGrid">
+        <!-- Profile cards injected here -->
+    </div>
+
+    <div class="manage-link" id="manageLink" style="display:none">
+        <button class="manage-btn" id="manageBtn">Manage Profiles</button>
+    </div>
+
+    <!-- Profiles toggle moved to Settings > Profiles tab -->
+
+    <!-- ---- Password modal ---- -->
+    <div class="modal-overlay" id="passwordModal">
+        <div class="modal-box">
+            <div class="modal-avatar" id="pwModalEmoji"></div>
+            <div class="modal-title" id="pwModalName"></div>
+            <div class="modal-subtitle">Enter your password</div>
+            <input
+                type="password"
+                class="modal-input"
+                id="pwInput"
+                placeholder="Password"
+                autocomplete="current-password"
+            >
+            <div class="modal-error" id="pwError"></div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="pwCancel">Cancel</button>
+                <button class="btn-enter" id="pwSubmit">
+                    <span class="btn-text">Enter</span>
+                    <div class="spinner"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ---- Manage Profiles modal ---- -->
+    <div class="modal-overlay" id="manageModal">
+        <div class="modal-box" style="max-width:460px; max-height:85vh; overflow-y:auto; text-align:left">
+            <div class="modal-section-title">Manage Profiles</div>
+            <div id="manageProfileList"></div>
+            <div style="margin-top:20px; display:flex; gap:10px;">
+                <button class="btn-cancel" id="manageClose" style="flex:1">Close</button>
+                <button class="btn-enter" id="addProfileBtn" style="flex:2">
+                    <span class="btn-text">+ Add Profile</span>
+                    <div class="spinner"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ---- Admin password gate modal (shown before Manage Profiles when env var is set) ---- -->
+    <div class="modal-overlay" id="adminGateModal">
+        <div class="modal-box">
+            <div class="modal-avatar">🔐</div>
+            <div class="modal-title">Admin Password Required</div>
+            <div class="modal-subtitle">Enter the server admin password to manage profiles</div>
+            <input
+                type="password"
+                class="modal-input"
+                id="adminGateInput"
+                placeholder="Server admin password"
+                autocomplete="off"
+            >
+            <div class="modal-error" id="adminGateError"></div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="adminGateCancel">Cancel</button>
+                <button class="btn-enter" id="adminGateSubmit">
+                    <span class="btn-text">Confirm</span>
+                    <div class="spinner"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ---- Delete profile confirmation modal ---- -->
+    <div class="modal-overlay" id="deleteConfirmModal">
+        <div class="modal-box" style="text-align:center">
+            <div style="margin-bottom:16px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ff4444" stroke-width="2" width="48" height="48">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+            </div>
+            <div class="modal-title" id="deleteConfirmTitle">Delete Profile?</div>
+            <p id="deleteConfirmMessage" style="font-size:14px; color:var(--text-secondary); margin:12px 0 24px"></p>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="deleteConfirmCancel" style="flex:1">Cancel</button>
+                <button class="btn-enter" id="deleteConfirmOk" style="flex:1; background:var(--danger)">
+                    <span class="btn-text">Delete</span>
+                    <div class="spinner"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ---- Create / Edit Profile modal ---- -->
+    <div class="modal-overlay" id="createModal">
+        <div class="modal-box" style="max-width:420px; text-align:left">
+            <div class="modal-section-title" id="createModalTitle">New Profile</div>
+            <div class="create-form">
+                <input type="hidden" id="editProfileId">
+                <div class="form-row">
+                    <label>Name</label>
+                    <input type="text" id="profileName" placeholder="e.g. Alex" maxlength="32">
+                </div>
+                <div class="form-row">
+                    <label>Emoji</label>
+                    <div class="emoji-grid" id="emojiGrid"></div>
+                </div>
+                <div class="form-row">
+                    <label>Password <span style="color:var(--text-secondary);font-size:12px">(optional)</span></label>
+                    <input type="password" id="profilePassword" placeholder="Leave blank for no password" autocomplete="new-password">
+                </div>
+                <div class="form-row" id="roleRow">
+                    <label>Role</label>
+                    <select id="profileRole">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="form-row" id="adminPasswordRow" style="display:none">
+                    <label>Server Admin Password <span style="color:var(--text-secondary);font-size:12px">(required for admin accounts)</span></label>
+                    <input type="password" id="adminPasswordInput" placeholder="Enter HOMEFEED_ADMIN_PASSWORD" autocomplete="off">
+                </div>
+                <div class="modal-error" id="createError"></div>
+                <div style="display:flex; gap:10px; margin-top:8px">
+                    <button class="btn-cancel" id="createCancel" style="flex:1">Cancel</button>
+                    <button class="btn-enter" id="createSave" style="flex:2">
+                        <span class="btn-text">Save</span>
+                        <div class="spinner"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ---- Folder Assignment modal ---- -->
+    <div class="modal-overlay" id="foldersModal">
+        <div class="modal-box" style="max-width:460px; max-height:85vh; overflow-y:auto; text-align:left">
+            <div class="modal-section-title" id="foldersModalTitle">Assign Folders</div>
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px" id="foldersModalSubtitle"></p>
+            <div id="folderAssignList"></div>
+            <div style="margin-top:20px; display:flex; gap:10px;">
+                <button class="btn-cancel" id="foldersClose" style="flex:1">Cancel</button>
+                <button class="btn-enter" id="foldersSave" style="flex:2">
+                    <span class="btn-text">Save</span>
+                    <div class="spinner"></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const EMOJIS = ['👤','😎','🎬','📸','🎵','🌟','🔥','💫','🎯','🏆','🌈','🦋','🌻','🎨','🏄','🎮','🐶','🐱','🦁','🐼','🌺','⚡','🍀','🦊'];
+
+        let profiles = [];
+        let selectedProfileId = null;
+        let currentUserIsAdmin = false;
+        let profilesEnabled = false;
+        let adminPasswordSet = false;
+
+        // ---- Fetch profiles on load ----
+        async function loadProfiles() {
+            try {
+                const res = await fetch('/api/profiles');
+                profiles = await res.json();
+            } catch (e) {
+                profiles = [];
+            }
+
+            try {
+                const meRes = await fetch('/api/profiles/me');
+                const me = await meRes.json();
+                currentUserIsAdmin = me.is_admin === true;
+                adminPasswordSet = me.admin_password_set === true;
+            } catch (e) {
+                currentUserIsAdmin = false;
+                adminPasswordSet = false;
+            }
+
+            try {
+                const settingsRes = await fetch('/api/settings');
+                const settings = await settingsRes.json();
+                profilesEnabled = settings.profiles_enabled === true;
+            } catch (e) {
+                profilesEnabled = false;
+            }
+
+            renderProfiles();
+        }
+
+        function renderProfiles() {
+            const grid = document.getElementById('profilesGrid');
+            const manageLink = document.getElementById('manageLink');
+            const firstRunNotice = document.getElementById('firstRunNotice');
+            const enableSection = document.getElementById('enableProfilesSection');
+            const enableToggle = document.getElementById('enableProfilesToggle');
+
+            // Show Enable Profiles toggle to admins; keep in sync with current state
+            if (currentUserIsAdmin) {
+                enableSection.style.display = '';
+                enableToggle.checked = profilesEnabled;
+            } else {
+                enableSection.style.display = 'none';
+            }
+
+            grid.innerHTML = '';
+
+            if (profiles.length === 0) {
+                firstRunNotice.style.display = 'block';
+                manageLink.style.display = 'none';
+                grid.appendChild(makeAddCard());
+                return;
+            }
+
+            firstRunNotice.style.display = 'none';
+
+            profiles.forEach(p => {
+                grid.appendChild(makeProfileCard(p));
+            });
+
+            // "Add Profile" is always available (self-serve user creation)
+            grid.appendChild(makeAddCard());
+
+            // Manage Profiles only for logged-in admins
+            manageLink.style.display = currentUserIsAdmin ? 'block' : 'none';
+        }
+
+        function makeProfileCard(profile) {
+            const card = document.createElement('div');
+            card.className = 'profile-card';
+            // Edit pencil only for logged-in admins
+            const pencil = currentUserIsAdmin
+                ? `<button class="edit-pencil" title="Edit profile">✏️</button>`
+                : '';
+            card.innerHTML = `
+                <div class="profile-avatar-wrap">
+                    <div class="profile-avatar">${profile.emoji}</div>
+                    ${profile.has_password ? '<div class="lock-badge">🔒</div>' : ''}
+                    ${pencil}
+                </div>
+                <div class="profile-name">${escHtml(profile.name)}</div>
+            `;
+            if (currentUserIsAdmin) {
+                card.querySelector('.edit-pencil').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openEditModal(profile.id);
+                });
+            }
+            card.addEventListener('click', () => selectProfile(profile));
+            return card;
+        }
+
+        function makeAddCard() {
+            const card = document.createElement('div');
+            card.className = 'add-profile-card' + (profilesEnabled ? '' : ' disabled');
+            card.innerHTML = `
+                <div class="profile-avatar">+</div>
+                <div class="profile-name">Add Profile</div>
+            `;
+            if (profilesEnabled) {
+                card.addEventListener('click', () => openCreateModal());
+            }
+            return card;
+        }
+
+        // ---- Profile selection ----
+        async function selectProfile(profile) {
+            if (profile.has_password) {
+                openPasswordModal(profile);
+            } else {
+                await loginProfile(profile.id, '');
+            }
+        }
+
+        async function loginProfile(profileId, password) {
+            try {
+                const res = await fetch('/api/profiles/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({profile_id: profileId, password})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = data.redirect || '/';
+                } else {
+                    return data.error || 'Incorrect password';
+                }
+            } catch (e) {
+                return 'An error occurred. Please try again.';
+            }
+            return null;
+        }
+
+        // ---- Password modal ----
+        const passwordModal = document.getElementById('passwordModal');
+        const pwInput = document.getElementById('pwInput');
+        const pwError = document.getElementById('pwError');
+        const pwSubmit = document.getElementById('pwSubmit');
+
+        function openPasswordModal(profile) {
+            selectedProfileId = profile.id;
+            document.getElementById('pwModalEmoji').textContent = profile.emoji;
+            document.getElementById('pwModalName').textContent = profile.name;
+            pwInput.value = '';
+            pwError.classList.remove('visible');
+            passwordModal.classList.add('visible');
+            setTimeout(() => pwInput.focus(), 150);
+        }
+
+        document.getElementById('pwCancel').addEventListener('click', () => {
+            passwordModal.classList.remove('visible');
+            selectedProfileId = null;
+        });
+
+        pwSubmit.addEventListener('click', submitPassword);
+        pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitPassword(); });
+
+        async function submitPassword() {
+            if (!selectedProfileId) return;
+            const password = pwInput.value;
+
+            pwSubmit.classList.add('loading');
+            pwSubmit.disabled = true;
+            pwError.classList.remove('visible');
+
+            const error = await loginProfile(selectedProfileId, password);
+
+            pwSubmit.classList.remove('loading');
+            pwSubmit.disabled = false;
+
+            if (error) {
+                pwError.textContent = error;
+                pwError.classList.add('visible');
+                pwInput.value = '';
+                pwInput.focus();
+            }
+        }
+
+        // ---- Manage modal ----
+        const manageModal = document.getElementById('manageModal');
+
+        // Feature 3: Gate manageBtn with admin password prompt if env var is set
+        document.getElementById('manageBtn').addEventListener('click', async () => {
+            if (adminPasswordSet) {
+                openAdminGateModal(openManageModal);
+            } else {
+                openManageModal();
+            }
+        });
+        document.getElementById('manageClose').addEventListener('click', () => {
+            manageModal.classList.remove('visible');
+        });
+
+        document.getElementById('addProfileBtn').addEventListener('click', () => {
+            manageModal.classList.remove('visible');
+            openCreateModal();
+        });
+
+        function openManageModal() {
+            renderManageList();
+            manageModal.classList.add('visible');
+        }
+
+        // ---- Admin password gate modal (Feature 3) ----
+        const adminGateModal = document.getElementById('adminGateModal');
+        const adminGateInput = document.getElementById('adminGateInput');
+        const adminGateError = document.getElementById('adminGateError');
+        const adminGateSubmit = document.getElementById('adminGateSubmit');
+        let adminGateCallback = null;
+
+        function openAdminGateModal(onSuccess) {
+            adminGateCallback = onSuccess;
+            adminGateInput.value = '';
+            adminGateError.classList.remove('visible');
+            adminGateModal.classList.add('visible');
+            setTimeout(() => adminGateInput.focus(), 150);
+        }
+
+        document.getElementById('adminGateCancel').addEventListener('click', () => {
+            adminGateModal.classList.remove('visible');
+            adminGateCallback = null;
+        });
+
+        adminGateSubmit.addEventListener('click', submitAdminGate);
+        adminGateInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitAdminGate(); });
+
+        async function submitAdminGate() {
+            const password = adminGateInput.value;
+            adminGateSubmit.classList.add('loading');
+            adminGateSubmit.disabled = true;
+            adminGateError.classList.remove('visible');
+
+            try {
+                const res = await fetch('/api/profiles/verify-admin-password', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password}),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    adminGateModal.classList.remove('visible');
+                    const cb = adminGateCallback;
+                    adminGateCallback = null;
+                    if (cb) cb();
+                } else {
+                    adminGateError.textContent = data.error || 'Incorrect password';
+                    adminGateError.classList.add('visible');
+                    adminGateInput.value = '';
+                    adminGateInput.focus();
+                }
+            } catch (e) {
+                adminGateError.textContent = 'An error occurred. Please try again.';
+                adminGateError.classList.add('visible');
+            } finally {
+                adminGateSubmit.classList.remove('loading');
+                adminGateSubmit.disabled = false;
+            }
+        }
+
+        // ---- Delete profile confirmation modal (Feature 4) ----
+        const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+        let pendingDeleteId = null;
+
+        document.getElementById('deleteConfirmCancel').addEventListener('click', () => {
+            deleteConfirmModal.classList.remove('visible');
+            pendingDeleteId = null;
+        });
+
+        document.getElementById('deleteConfirmOk').addEventListener('click', async () => {
+            if (!pendingDeleteId) return;
+            const profileId = pendingDeleteId;
+            const okBtn = document.getElementById('deleteConfirmOk');
+            okBtn.classList.add('loading');
+            okBtn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/profiles/${profileId}`, {method: 'DELETE'});
+                const data = await res.json();
+                if (data.success) {
+                    deleteConfirmModal.classList.remove('visible');
+                    pendingDeleteId = null;
+                    await loadProfiles();
+                    renderManageList();
+                } else {
+                    alert(data.error || 'Failed to delete profile');
+                }
+            } catch (e) {
+                alert('An error occurred');
+            } finally {
+                okBtn.classList.remove('loading');
+                okBtn.disabled = false;
+            }
+        });
+
+        function renderManageList() {
+            const list = document.getElementById('manageProfileList');
+            if (profiles.length === 0) {
+                list.innerHTML = '<div class="empty-state"><p>No profiles yet.</p></div>';
+                return;
+            }
+            list.innerHTML = '';
+            profiles.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'profile-list-item';
+                // Only show Folders button for non-admin profiles (admins use global folders)
+                const foldersBtn = p.role !== 'admin'
+                    ? `<button class="icon-btn folders-btn" data-id="${p.id}" data-name="${escHtml(p.name)}">Folders</button>`
+                    : '';
+                item.innerHTML = `
+                    <div class="profile-list-emoji">${p.emoji}</div>
+                    <div class="profile-list-info">
+                        <div class="profile-list-name">${escHtml(p.name)}</div>
+                        <div class="profile-list-role">${p.role}${p.has_password ? ' · 🔒' : ''}</div>
+                    </div>
+                    <div class="profile-list-actions">
+                        ${foldersBtn}
+                        <button class="icon-btn edit-btn" data-id="${p.id}">Edit</button>
+                        <button class="icon-btn danger delete-btn" data-id="${p.id}" data-name="${escHtml(p.name)}">Delete</button>
+                    </div>
+                `;
+                item.querySelector('.edit-btn').addEventListener('click', () => openEditModal(p.id));
+                item.querySelector('.delete-btn').addEventListener('click', () => deleteProfileConfirm(p.id, p.name));
+                if (p.role !== 'admin') {
+                    item.querySelector('.folders-btn').addEventListener('click', () => openFoldersModal(p.id, p.name));
+                }
+                list.appendChild(item);
+            });
+        }
+
+        // ---- Create / Edit modal ----
+        const createModal = document.getElementById('createModal');
+        const createError = document.getElementById('createError');
+
+        function buildEmojiGrid(selected) {
+            const grid = document.getElementById('emojiGrid');
+            grid.innerHTML = EMOJIS.map(e => `
+                <button class="emoji-btn ${e === selected ? 'selected' : ''}" data-emoji="${e}" onclick="selectEmoji('${e}')">${e}</button>
+            `).join('');
+        }
+
+        function selectEmoji(emoji) {
+            document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+            document.querySelector(`.emoji-btn[data-emoji="${emoji}"]`).classList.add('selected');
+        }
+
+        function getSelectedEmoji() {
+            const btn = document.querySelector('.emoji-btn.selected');
+            return btn ? btn.dataset.emoji : '👤';
+        }
+
+        function openCreateModal(profileId = null) {
+            const editId = document.getElementById('editProfileId');
+            const title = document.getElementById('createModalTitle');
+            const nameInput = document.getElementById('profileName');
+            const pwdInput = document.getElementById('profilePassword');
+            const roleInput = document.getElementById('profileRole');
+            const roleRow = document.getElementById('roleRow');
+            const adminPwRow = document.getElementById('adminPasswordRow');
+            const adminPwInput = document.getElementById('adminPasswordInput');
+            const pwdRow = pwdInput.closest('.form-row');
+
+            editId.value = profileId || '';
+            createError.classList.remove('visible');
+            adminPwInput.value = '';
+
+            if (profileId) {
+                // ---- Editing an existing profile ----
+                const p = profiles.find(x => x.id === profileId);
+                title.textContent = 'Edit Profile';
+                nameInput.value = p ? p.name : '';
+                // Only admins can change passwords
+                if (currentUserIsAdmin) {
+                    pwdRow.style.display = '';
+                    pwdInput.value = '';
+                    pwdInput.placeholder = p && p.has_password ? 'Leave blank to keep current password' : 'Leave blank for no password';
+                } else {
+                    pwdRow.style.display = 'none';
+                }
+                // Only admins can change roles
+                roleRow.style.display = currentUserIsAdmin ? '' : 'none';
+                roleInput.value = p ? p.role : 'user';
+                adminPwRow.style.display = 'none';
+                buildEmojiGrid(p ? p.emoji : '👤');
+            } else {
+                // ---- Creating a new profile ----
+                title.textContent = 'New Profile';
+                nameInput.value = '';
+                pwdInput.value = '';
+                pwdInput.placeholder = 'Set a password for this profile';
+                pwdRow.style.display = '';
+                // Show role selector if admin or if admin password is configured
+                roleRow.style.display = (currentUserIsAdmin || adminPasswordSet) ? '' : 'none';
+                roleInput.value = 'user';
+                adminPwRow.style.display = 'none';
+                buildEmojiGrid('👤');
+            }
+
+            createModal.classList.add('visible');
+            setTimeout(() => nameInput.focus(), 150);
+        }
+
+        // Show/hide admin password field when role changes
+        document.getElementById('profileRole').addEventListener('change', (e) => {
+            const adminPwRow = document.getElementById('adminPasswordRow');
+            const editId = document.getElementById('editProfileId').value;
+            // Show admin password field for new admin profiles (not when editing)
+            if (e.target.value === 'admin' && !editId && adminPasswordSet) {
+                adminPwRow.style.display = '';
+            } else {
+                adminPwRow.style.display = 'none';
+            }
+        });
+
+        function openEditModal(profileId) {
+            manageModal.classList.remove('visible');
+            openCreateModal(profileId);
+        }
+
+        document.getElementById('createCancel').addEventListener('click', () => {
+            createModal.classList.remove('visible');
+        });
+
+        document.getElementById('createSave').addEventListener('click', saveProfile);
+        document.getElementById('profileName').addEventListener('keydown', e => {
+            if (e.key === 'Enter') saveProfile();
+        });
+
+        async function saveProfile() {
+            const editId = document.getElementById('editProfileId').value;
+            const name = document.getElementById('profileName').value.trim();
+            const password = document.getElementById('profilePassword').value || null;
+            const role = document.getElementById('profileRole').value;
+            const emoji = getSelectedEmoji();
+            const adminPassword = document.getElementById('adminPasswordInput').value || '';
+
+            if (!name) {
+                createError.textContent = 'Name is required';
+                createError.classList.add('visible');
+                return;
+            }
+
+            // Validate: admin role requires admin password if the env var is set
+            if (!editId && role === 'admin' && adminPasswordSet && !adminPassword) {
+                createError.textContent = 'Server admin password is required to create admin profiles';
+                createError.classList.add('visible');
+                return;
+            }
+
+            const saveBtn = document.getElementById('createSave');
+            saveBtn.classList.add('loading');
+            saveBtn.disabled = true;
+            createError.classList.remove('visible');
+
+            try {
+                let res;
+                if (editId) {
+                    const body = {name, emoji};
+                    // Only send role/password if admin (backend enforces this too)
+                    if (currentUserIsAdmin) {
+                        body.role = role;
+                        if (password) body.password = password;
+                    }
+                    res = await fetch(`/api/profiles/${editId}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(body)
+                    });
+                } else {
+                    const body = {name, emoji, password, role};
+                    if (role === 'admin' && adminPassword) {
+                        body.admin_password = adminPassword;
+                    }
+                    res = await fetch('/api/profiles', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(body)
+                    });
+                }
+
+                const data = await res.json();
+                if (data.success || data.profile) {
+                    createModal.classList.remove('visible');
+                    await loadProfiles();
+                    if (!editId) {
+                        showSuccessHint('Profile created! Tap it to enter.');
+                    }
+                } else {
+                    createError.textContent = data.error || 'Failed to save profile';
+                    createError.classList.add('visible');
+                }
+            } catch (e) {
+                createError.textContent = 'An error occurred';
+                createError.classList.add('visible');
+            } finally {
+                saveBtn.classList.remove('loading');
+                saveBtn.disabled = false;
+            }
+        }
+
+        // ---- Delete profile (Feature 4: styled confirmation modal) ----
+        function deleteProfileConfirm(profileId, name) {
+            pendingDeleteId = profileId;
+            document.getElementById('deleteConfirmTitle').textContent = 'Delete Profile?';
+            document.getElementById('deleteConfirmMessage').textContent =
+                `This will permanently remove the profile "${name}". Their favorites and watch history data will also be deleted. This action cannot be undone.`;
+            deleteConfirmModal.classList.add('visible');
+        }
+
+        // ---- Folder assignment modal ----
+        const foldersModal = document.getElementById('foldersModal');
+        let foldersTargetProfileId = null;
+        let globalFolders = [];
+
+        document.getElementById('foldersClose').addEventListener('click', () => {
+            foldersModal.classList.remove('visible');
+            manageModal.classList.add('visible');
+        });
+
+        async function openFoldersModal(profileId, profileName) {
+            foldersTargetProfileId = profileId;
+            manageModal.classList.remove('visible');
+            document.getElementById('foldersModalTitle').textContent = `Folders for ${profileName}`;
+            document.getElementById('folderAssignList').innerHTML = '<p style="color:var(--text-secondary);font-size:13px">Loading…</p>';
+            foldersModal.classList.add('visible');
+
+            try {
+                // Fetch global folders (admin sees global list via /api/folders)
+                const [globalRes, profileRes] = await Promise.all([
+                    fetch('/api/folders'),
+                    fetch(`/api/profiles/${profileId}/folders`),
+                ]);
+                globalFolders = await globalRes.json();
+                const profileData = await profileRes.json();
+                const profileFolders = new Set(profileData.folders || []);
+
+                renderFolderAssignList(globalFolders, profileFolders);
+            } catch (e) {
+                document.getElementById('folderAssignList').innerHTML = '<p style="color:var(--danger);font-size:13px">Failed to load folders.</p>';
+            }
+        }
+
+        function renderFolderAssignList(allFolders, enabledFolders) {
+            const list = document.getElementById('folderAssignList');
+            document.getElementById('foldersModalSubtitle').textContent =
+                'Select which folders this profile can see. Folders are managed from the main Settings page.';
+
+            if (allFolders.length === 0) {
+                list.innerHTML = '<div class="empty-state"><p>No folders configured yet. Add folders from the main app first.</p></div>';
+                return;
+            }
+
+            list.innerHTML = allFolders.map(folder => {
+                const checked = enabledFolders.has(folder) ? 'checked' : '';
+                const label = folder.split('/').pop() || folder;
+                return `
+                    <label style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); cursor:pointer;">
+                        <input type="checkbox" data-folder="${escHtml(folder)}" ${checked}
+                            style="width:18px; height:18px; accent-color:var(--accent); flex-shrink:0; cursor:pointer">
+                        <div>
+                            <div style="font-size:14px; font-weight:500">${escHtml(label)}</div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-top:2px">${escHtml(folder)}</div>
+                        </div>
+                    </label>
+                `;
+            }).join('');
+        }
+
+        document.getElementById('foldersSave').addEventListener('click', async () => {
+            if (!foldersTargetProfileId) return;
+            const checkboxes = document.querySelectorAll('#folderAssignList input[type=checkbox]');
+            const selected = [];
+            checkboxes.forEach(cb => { if (cb.checked) selected.push(cb.dataset.folder); });
+
+            const saveBtn = document.getElementById('foldersSave');
+            saveBtn.classList.add('loading');
+            saveBtn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/profiles/${foldersTargetProfileId}/folders`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({folders: selected}),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    foldersModal.classList.remove('visible');
+                    manageModal.classList.add('visible');
+                    showSuccessHint(`Folders updated.`);
+                } else {
+                    alert(data.error || 'Failed to save folders');
+                }
+            } catch (e) {
+                alert('An error occurred');
+            } finally {
+                saveBtn.classList.remove('loading');
+                saveBtn.disabled = false;
+            }
+        });
+
+        // ---- Close modals on overlay click ----
+        [passwordModal, manageModal, createModal, foldersModal, adminGateModal, deleteConfirmModal].forEach(modal => {
+            modal.addEventListener('click', e => {
+                if (e.target === modal) modal.classList.remove('visible');
+            });
+        });
+
+        // ---- Escape key closes modals ----
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                [passwordModal, manageModal, createModal, foldersModal, adminGateModal, deleteConfirmModal].forEach(m => m.classList.remove('visible'));
+            }
+        });
+
+        // ---- Success hint toast ----
+        function showSuccessHint(msg) {
+            const hint = document.getElementById('successHint');
+            hint.textContent = msg;
+            hint.classList.add('visible');
+            setTimeout(() => hint.classList.remove('visible'), 3000);
+        }
+
+        // ---- Exit button ----
+        document.getElementById('profileExitBtn').addEventListener('click', () => {
+            window.location.href = '/';
+        });
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        // ---- Enable Profiles toggle ----
+        document.getElementById('enableProfilesToggle').addEventListener('change', async (e) => {
+            const enabled = e.target.checked;
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({profiles_enabled: enabled}),
+                });
+                const data = await res.json();
+                if (data.error) {
+                    e.target.checked = !enabled; // revert on error
+                    return;
+                }
+                profilesEnabled = enabled;
+                renderProfiles();
+            } catch (err) {
+                e.target.checked = !enabled; // revert on network error
+            }
+        });
+
+        // ---- Boot ----
+        loadProfiles();
+    </script>
+</body>
+</html>

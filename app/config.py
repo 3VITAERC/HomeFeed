@@ -15,6 +15,10 @@ TRASH_FILE = os.path.join(BASE_DIR, 'trash.json')
 THUMBNAIL_DIR = os.path.join(BASE_DIR, '.thumbnails')
 SEEN_FILE = os.path.join(BASE_DIR, 'seen.json')
 
+# Profiles
+PROFILES_FILE = os.path.join(BASE_DIR, 'profiles.json')
+PROFILES_DIR = os.path.join(BASE_DIR, 'profiles')
+
 # Supported file formats
 SUPPORTED_FORMATS: Set[str] = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.m4v', '.mp4', '.mov'}
 VIDEO_FORMATS: Set[str] = {'.m4v', '.mp4', '.mov', '.webm'}

@@ -14,7 +14,7 @@ A TikTok-style vertical scrolling image viewer for local photos. Flask backend +
 HomeFeed/
 ├── server.py              # Entry point (~50 lines) - creates Flask app
 ├── app/
-│   ├── __init__.py        # Flask app factory
+│   ├── __init__.py        # Flask app factory (auth + profile before_request)
 │   ├── config.py          # Configuration constants
 │   ├── routes/
 │   │   ├── __init__.py    # Blueprint registration
@@ -24,6 +24,7 @@ HomeFeed/
 │   │   ├── trash.py       # /api/trash/*
 │   │   ├── cache.py       # /api/cache, /api/settings
 │   │   ├── auth.py        # /login, /logout, /api/auth/*
+│   │   ├── profiles.py    # /profiles, /api/profiles/*
 │   │   └── pages.py       # /, /settings, /scroll, /static
 │   └── services/
 │       ├── __init__.py    # Service exports
@@ -31,10 +32,12 @@ HomeFeed/
 │       ├── path_utils.py  # Path validation and normalization
 │       ├── image_cache.py # Image list caching
 │       ├── auth.py        # Authentication service
+│       ├── profiles.py    # Profile management (CRUD, sessions, per-profile data)
 │       └── optimizations.py # Thumbnail/WebM conversion
 ├── static/
 │   ├── index.html         # Main HTML (~500 lines) - structure only
 │   ├── login.html         # Login page
+│   ├── profiles.html      # Profile picker page
 │   ├── style.css          # TikTok-style CSS
 │   └── js/
 │       ├── app.js         # Main entry point
@@ -47,6 +50,12 @@ HomeFeed/
 ├── config.json            # Saved folder paths (gitignored)
 ├── favorites.json         # Saved favorites (gitignored)
 ├── trash.json             # Saved trash marks (gitignored)
+├── profiles.json          # Profile list (gitignored)
+├── profiles/              # Per-profile data directories (gitignored)
+│   └── <profile-id>/      # Auto-created when a profile is created
+│       ├── config.json    # Profile's folder selection
+│       ├── favorites.json # Profile's favorites
+│       └── seen.json      # Profile's watch history
 └── .flask_session/        # Session storage (gitignored)
 ```
 
@@ -78,7 +87,8 @@ PORT=9000 python server.py
 - **Frontend:** ES6 modules with vanilla JS, no build step required
 - **Data storage:** JSON files (config, favorites, trash) - no database
 - **Image serving:** Direct file serving with ETag caching (7-day max-age)
-- **Authentication:** Optional password protection via environment variable
+- **Authentication:** Optional password protection via environment variable (`HOMEFEED_PASSWORD`)
+- **Profiles:** Optional Netflix-style user profiles; each profile has isolated favorites, watch history, and folder selection
 
 ---
 
@@ -128,6 +138,143 @@ The `before_request` hook in `app/__init__.py` intercepts all requests and:
 2. Allows auth-related routes (`/login`, `/api/auth/*`)
 3. Checks session for authenticated state
 4. Redirects to login page or returns 401 for API requests
+
+---
+
+## User Profiles
+
+A Netflix-style profile system. Each profile has its own favorites, watch history, and folder selection. The feature is controlled by a `profiles_enabled` flag in `config.json` and is enabled by default once any profile exists.
+
+### Data Layout
+
+```
+profiles.json          # List of all profiles (name, emoji, role, password_hash)
+profiles/<id>/         # Per-profile data directory (auto-created on profile creation)
+    config.json        # Profile's selected folders
+    favorites.json     # Profile's favorites
+    seen.json          # Profile's watch history
+```
+
+Admin profiles always use the **global** `config.json` folder list. User profiles use their own `profiles/<id>/config.json`.
+
+### Roles & Permission Model
+
+| Role | Capabilities |
+|------|-------------|
+| `admin` | Full access: create/edit/delete profiles, manage global folders, assign folders to users, change settings |
+| `user` | Self-serve: create own user account, edit own name/emoji, add folders to own account, manage own favorites + watch history |
+
+**Users CANNOT:** change their own password/role, edit other profiles, change global settings, clear cache.
+
+**`is_current_profile_admin()` behavior:**
+- No profiles exist → `True` (first-run bootstrap)
+- Profiles exist but no one logged in → `False` (prevents unauthenticated admin operations)
+- Logged in as admin → `True`
+- Logged in as user → `False`
+
+### `HOMEFEED_ADMIN_PASSWORD` Environment Variable
+
+Serves **two purposes:**
+
+1. **Gates admin profile creation** — creating an admin-role profile via `POST /api/profiles` requires `admin_password` in the request body matching this env var
+2. **Master login key** — can unlock any admin-role profile at the picker (recovery mechanism)
+
+```bash
+HOMEFEED_ADMIN_PASSWORD=secret python server.py
+```
+
+- Only affects `role == 'admin'` profiles — user-role profiles are unaffected.
+- If NOT set: admin creation falls back to role check (only existing admins or first-run can create admins).
+- Completely separate from `HOMEFEED_PASSWORD` (the global app lock).
+
+### Admin-Gated Routes
+
+These routes require `is_current_profile_admin() == True`:
+
+| Route | Why |
+|-------|-----|
+| `POST /api/settings` | Global settings (shuffle, profiles_enabled, optimizations) |
+| `DELETE /api/cache` | Clear thumbnail/poster cache |
+| `DELETE /api/profiles/<id>` | Delete a profile |
+| `GET/PUT /api/profiles/<id>/folders` | Manage folder assignments |
+
+`POST /api/profiles` has special logic: user-role = self-serve; admin-role = requires `HOMEFEED_ADMIN_PASSWORD` (if set) or existing admin session.
+
+`PUT /api/profiles/<id>` allows users to edit their own name/emoji only; admins can edit everything.
+
+### Request Flow (`app/__init__.py` `before_request`)
+
+```
+Request arrives
+ │
+ ├─ /static/* → allow
+ │
+ ├─ HOMEFEED_PASSWORD set?
+ │   └─ not authenticated → redirect /login (or 401)
+ │
+ ├─ profiles_enabled?
+ │   ├─ No → skip (single-user mode)
+ │   └─ Yes:
+ │       ├─ /profiles/* or /api/profiles/* → allow (picker & login)
+ │       ├─ /api/settings (GET) → allow (read config; POST is admin-gated in route)
+ │       └─ profiles exist but none selected → redirect /profiles (or 401)
+```
+
+### Profile API Endpoints
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/profiles` | GET | — | Profile picker page |
+| `/api/profiles` | GET | — | List profiles (public, no hashes) |
+| `/api/profiles` | POST | self-serve (user) / admin_password (admin) | Create a profile |
+| `/api/profiles/<id>` | PUT | self (name/emoji) or admin (all) | Update a profile |
+| `/api/profiles/<id>` | DELETE | admin | Delete a profile |
+| `/api/profiles/login` | POST | — | Select profile + verify password |
+| `/api/profiles/logout` | POST | — | Clear profile selection → picker |
+| `/api/profiles/me` | GET | — | Current profile info + is_admin + admin_password_set |
+| `/api/profiles/<id>/folders` | GET | admin | Get profile's folder list |
+| `/api/profiles/<id>/folders` | PUT | admin | Assign folders to a user profile |
+
+### Key Service Functions (`app/services/profiles.py`)
+
+```python
+get_current_profile_id()      # → profile_id or None (from session)
+is_current_profile_admin()    # → bool; True only if logged in as admin OR no profiles exist
+get_current_folders()         # → list of folder paths for the active profile
+verify_profile_password(id, pw)  # → bool; checks HOMEFEED_ADMIN_PASSWORD first for admins
+create_profile(name, emoji, password, role)  # Creates profile + data dir
+get_profile_data_file(id, filename)          # → path to a per-profile file, ensures dir exists
+```
+
+### Per-Profile Data Routing
+
+All data services (favorites, seen, folders) check the active profile and redirect reads/writes to the correct file:
+
+```python
+# In favorites.py, trash.py, seen.py routes:
+profile_id = get_current_profile_id()
+if profile_id and profiles_exist():
+    data_file = get_profile_data_file(profile_id, 'favorites.json')
+else:
+    data_file = FAVORITES_FILE  # global fallback
+```
+
+### UI Layout
+
+- **Profile picker** (`/profiles`): Select a profile or self-create a user account. Admin management only shown when logged in as admin.
+- **Settings → Profiles tab**: Switch profile, manage profiles link (admin), Enable Profiles toggle (admin).
+- **Settings → Display tab**: User-visible display options only.
+- **Settings → Performance tab**: Admin-only settings (POST is admin-gated).
+
+### Common Pitfalls
+
+- **Admin profiles always use global folders** — `get_current_folders()` returns the global config for admin roles, even if a per-profile config exists.
+- **`is_current_profile_admin()` returns `False` when profiles exist but no one is logged in** — this is the security fix that prevents unauthenticated admin operations.
+- **`is_current_profile_admin()` returns `True` only when no profiles exist** — first-run bootstrap case.
+- **Cannot delete your own profile** — the route blocks `DELETE /api/profiles/<id>` if `id == get_current_profile_id()`.
+- **Profile data dirs are not deleted on profile deletion** — `delete_profile()` removes the entry from `profiles.json` but leaves `profiles/<id>/` on disk (intentional data safety).
+- **`HOMEFEED_ADMIN_PASSWORD` only unlocks admin-role profiles** — setting the env var does not give admin powers to user-role profiles.
+- **User self-edit is limited** — `PUT /api/profiles/<id>` strips password/role changes for non-admin callers.
 
 ---
 

@@ -29,6 +29,41 @@
         .image-slide video.loaded {
             opacity: 1;
         }
+
+        /* Profile info row: main content wrapper that gets greyed out when profiles disabled */
+        #profileInfoRow {
+            flex-wrap: nowrap;
+            gap: 8px;
+        }
+        .profile-info-main {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            gap: 8px;
+            min-width: 0;
+        }
+        .profile-info-main .settings-toggle-info {
+            flex: 1;
+            min-width: 0;
+        }
+        /* Greyed-out state when Enable Profiles is off */
+        .profile-info-main.profiles-disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        /* Log Out button in profiles tab - uses same style as Switch Profile but subdued */
+        .settings-logout-profile-btn {
+            flex-shrink: 0;
+        }
+        /* Danger-styled button for destructive actions */
+        .settings-danger-btn {
+            color: #ff453a !important;
+            border-color: rgba(255, 69, 58, 0.4) !important;
+        }
+        .settings-danger-btn:hover {
+            background: rgba(255, 69, 58, 0.12) !important;
+            border-color: rgba(255, 69, 58, 0.7) !important;
+        }
     </style>
 </head>
 <body>
@@ -333,7 +368,8 @@
         <div class="settings-modal-content">
             <div class="info-modal-header">
                 <h3>Settings</h3>
-                <button class="settings-logout-header-btn" id="settingsLogoutHeaderBtn" style="display: none;">Log Out</button>
+                <div class="settings-header-actions">
+                </div>
                 <button class="info-modal-close" id="settingsModalClose">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -347,6 +383,7 @@
                 <button class="settings-tab active" data-tab="folders">Folders</button>
                 <button class="settings-tab" data-tab="display">Display</button>
                 <button class="settings-tab" data-tab="performance">Performance</button>
+                <button class="settings-tab" data-tab="profiles" id="settingsProfilesTab" style="display:none">Profiles</button>
             </div>
             
             <div class="settings-modal-body" id="settingsModalBody">
@@ -455,8 +492,9 @@
                     <div class="settings-sub-desc" id="dateSourceSubDesc">
                         Off = Modified Date first &nbsp;|&nbsp; On = Created Date first
                     </div>
+
                 </div>
-                
+
                 <!-- Performance Tab Content -->
                 <div class="settings-tab-content" id="settingsTabPerformance">
                     <p class="settings-tab-description">
@@ -520,7 +558,53 @@
                         </button>
                     </div>
                 </div>
-                
+
+                <!-- Profiles Tab Content -->
+                <div class="settings-tab-content" id="settingsTabProfiles">
+                    <!-- Current profile info row: greyed-out section + always-on Log Out -->
+                    <div class="settings-toggle-item" id="profileInfoRow" style="display:none">
+                        <div class="profile-info-main" id="profileInfoMain">
+                            <div class="settings-toggle-info">
+                                <div class="settings-toggle-title" id="profileInfoName"></div>
+                                <div class="settings-toggle-desc" id="profileInfoRole"></div>
+                            </div>
+                            <button class="settings-switch-profile-btn" id="settingsSwitchProfileBtn" style="display:none">Switch Profile</button>
+                        </div>
+                        <!-- Log Out sits outside the greyed area so it stays clickable when profiles are disabled -->
+                        <button class="settings-switch-profile-btn settings-logout-profile-btn" id="settingsLogoutHeaderBtn" style="display:none">Log Out</button>
+                    </div>
+
+                    <!-- Manage Profiles (admin only) -->
+                    <div class="settings-toggle-item" id="manageProfilesRow" style="display:none">
+                        <div class="settings-toggle-info">
+                            <div class="settings-toggle-title">Manage Profiles</div>
+                            <div class="settings-toggle-desc">Create, edit, or delete profiles and assign folders</div>
+                        </div>
+                        <button class="settings-switch-profile-btn" id="settingsManageProfilesBtn">Manage</button>
+                    </div>
+
+                    <!-- Enable Profiles toggle (admin only) -->
+                    <div class="settings-toggle-item" id="profilesToggleRow" style="display:none">
+                        <div class="settings-toggle-info">
+                            <div class="settings-toggle-title">Enable Profiles</div>
+                            <div class="settings-toggle-desc">Show "Who's watching?" after login to keep separate feeds per person</div>
+                        </div>
+                        <label class="settings-toggle">
+                            <input type="checkbox" id="toggleProfiles">
+                            <span class="settings-toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Delete All Profile Data (admin only) -->
+                    <div class="settings-toggle-item" id="deleteAllProfilesRow" style="display:none">
+                        <div class="settings-toggle-info">
+                            <div class="settings-toggle-title">Delete All Profile Data</div>
+                            <div class="settings-toggle-desc">Remove all other profiles, their favorites, watch history, and folder settings</div>
+                        </div>
+                        <button class="settings-switch-profile-btn settings-danger-btn" id="deleteAllProfilesBtn">Delete All</button>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>

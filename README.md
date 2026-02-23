@@ -19,6 +19,7 @@ A TikTok-style vertical scrolling image viewer for your local photos. Scroll thr
 - **Auto-Advance Mode** - Auto-scroll when video ends or after a configurable delay for photos
 - **Pull-to-Refresh** - Drag down on the top nav bar to refresh without losing your place (perfect for PWA/home-screen users)
 - **Optional Authentication** - Password protection for exposing the app remotely
+- **User Profiles** - Netflix-style profile picker so multiple people can each have their own favorites, watch history, and folder selection
 
 
 
@@ -89,6 +90,83 @@ You'll see output like:
 ### 4. Start Scrolling!
 
 Click "View Images" and scroll through your photos TikTok-style!
+
+## User Profiles (Optional)
+
+HomeFeed includes a Netflix-style profile system so multiple people can share one server while keeping their own favorites, watch history, and folder selection completely separate.
+
+### Enabling Profiles
+
+Profiles are **enabled by default** once you create at least one profile. To create profiles:
+
+1. Open the app and go to `/profiles`
+2. Click **Add Profile**, enter a name and choose an emoji
+3. Optionally set a password for that profile
+4. To create an **Admin** profile, select the Admin role and enter the server admin password (see below)
+
+Once at least one profile exists the app redirects all visitors to the profile picker before letting them in.
+
+To turn the feature off entirely, log in as an admin and go to **Settings → Profiles → Enable Profiles** toggle. This returns the app to single-user mode.
+
+### Roles & Permissions
+
+| Role | Capabilities |
+|------|-------------|
+| **Admin** | Create/edit/delete profiles, manage global folder list, assign folders to user profiles, see all folders, change app settings |
+| **User** | Create their own user account (self-serve), edit their own name/emoji, add folders to their own account, manage their own favorites and watch history |
+
+**What users CANNOT do:**
+- Change their own password (admin must do this)
+- Change their own role
+- Edit other profiles
+- Change global settings (shuffle, optimizations, profiles toggle)
+- Clear the cache
+
+### Server Admin Password (`HOMEFEED_ADMIN_PASSWORD`)
+
+This environment variable serves two purposes:
+
+1. **Gates admin profile creation** — anyone creating an admin-role profile must enter this password
+2. **Master login key** — can unlock any admin-role profile on the picker (useful if you forget a profile password)
+
+```bash
+HOMEFEED_ADMIN_PASSWORD=secret python server.py
+
+# Production example
+HOMEFEED_ADMIN_PASSWORD=secret gunicorn -w 4 -b 0.0.0.0:7123 server:app
+```
+
+> **Note:** `HOMEFEED_ADMIN_PASSWORD` is separate from `HOMEFEED_PASSWORD` (the global app password). You can use both together: `HOMEFEED_PASSWORD` locks the whole app behind a single login; `HOMEFEED_ADMIN_PASSWORD` controls who can become an admin.
+
+### Per-Profile Data
+
+Each profile gets its own isolated data:
+
+| Data | Storage |
+|------|---------|
+| Favorites | `profiles/<id>/favorites.json` |
+| Watch history (seen) | `profiles/<id>/seen.json` |
+| Folder selection | `profiles/<id>/config.json` |
+
+Admin profiles always see the **global** folder list (the one configured in Settings). User profiles only see the folders an admin has assigned to them.
+
+Global data (`profiles.json`, `profiles/`) is gitignored and created automatically.
+
+### Profile API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/profiles` | GET | Profile picker page |
+| `/api/profiles` | GET | List all profiles (public info) |
+| `/api/profiles` | POST | Create a profile (user = self-serve; admin = requires `admin_password`) |
+| `/api/profiles/<id>` | PUT | Update a profile (users: own name/emoji only; admins: everything) |
+| `/api/profiles/<id>` | DELETE | Delete a profile (admin only) |
+| `/api/profiles/login` | POST | Select a profile / verify password |
+| `/api/profiles/logout` | POST | Return to profile picker |
+| `/api/profiles/me` | GET | Info about the currently selected profile |
+| `/api/profiles/<id>/folders` | GET/PUT | Get/set folders for a user profile (admin only) |
+
+---
 
 ## Authentication (Optional)
 
@@ -272,6 +350,12 @@ HomeFeed/
 ├── config.json            # Saved folder paths (gitignored, auto-generated)
 ├── favorites.json         # Saved favorites (gitignored, auto-generated)
 ├── trash.json             # Saved trash marks (gitignored, auto-generated)
+├── profiles.json          # Profile list (gitignored, auto-generated)
+├── profiles/              # Per-profile data directories (gitignored, auto-generated)
+│   └── <profile-id>/      # One directory per profile
+│       ├── config.json    # Profile's folder selection
+│       ├── favorites.json # Profile's favorites
+│       └── seen.json      # Profile's watch history
 ├── .flask_session/        # Session storage (gitignored, auto-generated)
 ├── app/                   # Backend application package
 │   ├── __init__.py        # Flask app factory
@@ -283,12 +367,14 @@ HomeFeed/
 │   │   ├── trash.py       # Trash/mark-for-deletion API
 │   │   ├── cache.py       # Cache settings API
 │   │   ├── auth.py        # Authentication endpoints
+│   │   ├── profiles.py    # Profile picker + CRUD API
 │   │   └── pages.py       # HTML page routes
 │   └── services/          # Business logic services
 │       ├── data.py        # JSON data management
 │       ├── path_utils.py  # Path validation utilities
 │       ├── image_cache.py # Image list caching
 │       ├── auth.py        # Authentication service
+│       ├── profiles.py    # Profile management service
 │       └── optimizations.py # Thumbnail/WebM conversion
 └── static/                # Frontend assets
     ├── index.html         # Main HTML structure

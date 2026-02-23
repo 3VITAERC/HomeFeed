@@ -3,6 +3,8 @@ config.json
 favorites.json
 trash.json
 seen.json
+profiles.json
+profiles/
 .thumbnails
 .archive-ignore
 Guides

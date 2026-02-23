@@ -53,19 +53,28 @@ def normalize_path(path_str: str) -> str:
 
 
 def is_path_allowed(path_to_check: str) -> bool:
-    """Check if a path is within the configured allowed folders.
-    
+    """Check if a path is within the allowed folders for the current session.
+
+    When profiles are active this checks the current profile's folder list.
+    Falls back to the global config when profiles are not in use.
+    Also allows paths within the thumbnail cache directory.
+
     Args:
         path_to_check: The path to validate (should be already expanded/normalized)
-    
+
     Returns:
         bool: True if path is within an allowed folder
     """
-    config = _load_config()
-    for folder in config.get('folders', []):
+    from app.services.profiles import get_current_folders
+    folders = get_current_folders()
+    for folder in folders:
         folder_normalized = normalize_path(folder)
         if path_to_check.startswith(folder_normalized):
             return True
+    # Always allow the thumbnail cache directory
+    thumb_normalized = normalize_path(THUMBNAIL_DIR)
+    if path_to_check.startswith(thumb_normalized):
+        return True
     return False
 
 

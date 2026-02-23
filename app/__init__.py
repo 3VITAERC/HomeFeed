@@ -11,12 +11,12 @@ from flask_session import Session
 
 def _ensure_config_files_exist():
     """Create default config files if they don't exist.
-    
+
     This allows users to skip the manual setup step of copying example files.
     Files are created with sensible defaults on first launch.
     """
-    from app.config import CONFIG_FILE, FAVORITES_FILE, TRASH_FILE, SEEN_FILE, DEFAULT_OPTIMIZATIONS
-    
+    from app.config import CONFIG_FILE, FAVORITES_FILE, TRASH_FILE, SEEN_FILE, DEFAULT_OPTIMIZATIONS, PROFILES_DIR, PROFILES_FILE
+
     defaults = {
         CONFIG_FILE: {
             'folders': [],
@@ -26,12 +26,16 @@ def _ensure_config_files_exist():
         FAVORITES_FILE: {'favorites': []},
         TRASH_FILE: {'trash': []},
         SEEN_FILE: {'seen': {}, 'total_scrolls': 0},
+        PROFILES_FILE: {'profiles': []},
     }
-    
+
     for filepath, default_content in defaults.items():
         if not os.path.exists(filepath):
             with open(filepath, 'w') as f:
                 json.dump(default_content, f, indent=2)
+
+    # Ensure profiles directory exists
+    os.makedirs(PROFILES_DIR, exist_ok=True)
 
 
 def create_app(config=None):
@@ -81,7 +85,8 @@ def create_app(config=None):
     from app.routes.pages import pages_bp
     from app.routes.auth import auth_bp
     from app.routes.seen import seen_bp
-    
+    from app.routes.profiles import profiles_bp
+
     app.register_blueprint(images_bp)
     app.register_blueprint(folders_bp)
     app.register_blueprint(favorites_bp)
@@ -90,40 +95,59 @@ def create_app(config=None):
     app.register_blueprint(pages_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(seen_bp)
-    
-    # Add authentication check before each request
+    app.register_blueprint(profiles_bp)
+
+    # Add authentication and profile checks before each request
     from app.services import is_auth_enabled, is_authenticated
-    
+    from app.services.profiles import is_profiles_enabled, profiles_exist, is_profile_selected
+
     @app.before_request
     def check_auth():
-        """Check authentication before each request.
-        
-        Skips auth check for:
-        - Login page and endpoints
-        - Auth status API
-        - Static files (CSS, JS) - these are protected by the main auth
+        """Check authentication and profile selection before each request.
+
+        Order:
+        1. If global password auth is enabled, require it first.
+        2. If profiles are enabled and configured, require a profile to be selected.
+
+        Skipped for:
+        - Auth-related routes (/login, /api/auth/*)
+        - Profile-related routes (/profiles, /api/profiles/*)
+        - Static files
         """
-        # Skip auth check if not enabled
-        if not is_auth_enabled():
-            return None
-        
-        # Allow login-related routes
-        if request.endpoint and request.endpoint.startswith('auth.'):
-            return None
-        
-        # Allow static files for login page
+        # Always allow static files
         if request.path.startswith('/static/'):
-            # Still require auth for protected static content
-            # But allow login page assets
             return None
-        
-        # Check if authenticated
-        if is_authenticated():
+
+        # ---- Step 1: Global password auth ----
+        if is_auth_enabled():
+            # Allow auth routes
+            if request.endpoint and request.endpoint.startswith('auth.'):
+                return None
+
+            if not is_authenticated():
+                if request.accept_mimetypes.accept_html:
+                    return redirect(url_for('auth.login_page'))
+                return jsonify({'error': 'Authentication required'}), 401
+
+        # ---- Step 2: Profile selection ----
+        # Skip if profiles feature is disabled
+        if not is_profiles_enabled():
             return None
-        
-        # Not authenticated - redirect to login or return 401
-        if request.accept_mimetypes.accept_html:
-            return redirect(url_for('auth.login_page'))
-        return jsonify({'error': 'Authentication required'}), 401
-    
+
+        # Allow profile routes (picker, login, etc.)
+        if request.endpoint and request.endpoint.startswith('profiles.'):
+            return None
+
+        # Allow settings routes so the app can read config (GET is public; POST is admin-gated)
+        if request.endpoint and request.endpoint.startswith('cache.'):
+            return None
+
+        # If profiles exist and none is selected, redirect to picker
+        if profiles_exist() and not is_profile_selected():
+            if request.accept_mimetypes.accept_html:
+                return redirect(url_for('profiles.profile_picker'))
+            return jsonify({'error': 'Profile selection required'}), 401
+
+        return None
+
     return app

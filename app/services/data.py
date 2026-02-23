@@ -260,3 +260,152 @@ def get_seen_stats(total_image_count: int) -> Dict[str, Any]:
 def reset_seen() -> None:
     """Reset all seen history (clears seen.json)."""
     save_seen({'seen': {}, 'total_scrolls': 0})
+
+
+# ---------------------------------------------------------------------------
+# Profile-aware helpers
+# These automatically scope to the current profile's data files when profiles
+# are in use, and fall back to the global files otherwise.
+# ---------------------------------------------------------------------------
+
+def _active_favorites_file() -> str:
+    """Return the favorites file path for the active profile (or global)."""
+    from app.services.profiles import get_current_profile_id, is_profiles_active, get_profile_data_file
+    profile_id = get_current_profile_id()
+    if profile_id and is_profiles_active():
+        return get_profile_data_file(profile_id, 'favorites.json')
+    return FAVORITES_FILE
+
+
+def _active_trash_file() -> str:
+    """Return the trash file path for the active profile (or global)."""
+    from app.services.profiles import get_current_profile_id, is_profiles_active, get_profile_data_file
+    profile_id = get_current_profile_id()
+    if profile_id and is_profiles_active():
+        return get_profile_data_file(profile_id, 'trash.json')
+    return TRASH_FILE
+
+
+def _active_seen_file() -> str:
+    """Return the seen file path for the active profile (or global)."""
+    from app.services.profiles import get_current_profile_id, is_profiles_active, get_profile_data_file
+    profile_id = get_current_profile_id()
+    if profile_id and is_profiles_active():
+        return get_profile_data_file(profile_id, 'seen.json')
+    return SEEN_FILE
+
+
+def _load_json_file(filepath: str, default: Any) -> Any:
+    """Load JSON from a file, returning default if missing or corrupt."""
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return default
+
+
+def _save_json_file(filepath: str, data: Any) -> None:
+    """Save JSON to a file with a file lock."""
+    lock = FileLock(filepath + '.lock')
+    with lock:
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2)
+
+
+def load_active_favorites() -> List[str]:
+    """Load favorites for the current profile (or global)."""
+    filepath = _active_favorites_file()
+    data = _load_json_file(filepath, {'favorites': []})
+    return data.get('favorites', [])
+
+
+def save_active_favorites(favorites: List[str]) -> None:
+    """Save favorites for the current profile (or global)."""
+    _save_json_file(_active_favorites_file(), {'favorites': favorites})
+
+
+def cleanup_active_favorites() -> List[str]:
+    """Remove active-profile favorites that no longer exist on disk."""
+    favorites = load_active_favorites()
+    valid = [p for p in favorites if os.path.exists(p)]
+    if len(valid) != len(favorites):
+        save_active_favorites(valid)
+    return valid
+
+
+def load_active_trash() -> List[str]:
+    """Load trash for the current profile (or global)."""
+    filepath = _active_trash_file()
+    data = _load_json_file(filepath, {'trash': []})
+    return data.get('trash', [])
+
+
+def save_active_trash(trash: List[str]) -> None:
+    """Save trash for the current profile (or global)."""
+    _save_json_file(_active_trash_file(), {'trash': trash})
+
+
+def cleanup_active_trash() -> List[str]:
+    """Remove active-profile trash entries that no longer exist on disk."""
+    trash = load_active_trash()
+    valid = [p for p in trash if os.path.exists(p)]
+    if len(valid) != len(trash):
+        save_active_trash(valid)
+    return valid
+
+
+def load_active_seen() -> Dict[str, Any]:
+    """Load seen data for the current profile (or global)."""
+    filepath = _active_seen_file()
+    data = _load_json_file(filepath, {'seen': {}, 'total_scrolls': 0})
+    return {
+        'seen': data.get('seen', {}),
+        'total_scrolls': data.get('total_scrolls', 0),
+    }
+
+
+def save_active_seen(data: Dict[str, Any]) -> None:
+    """Save seen data for the current profile (or global)."""
+    _save_json_file(_active_seen_file(), data)
+
+
+def mark_active_seen_batch(paths: List[str]) -> Dict[str, Any]:
+    """Mark a batch of paths as seen for the current profile (or global)."""
+    data = load_active_seen()
+    seen_map = data['seen']
+    now = time.time()
+    new_count = 0
+
+    for path in paths:
+        if path in seen_map:
+            seen_map[path]['seen_count'] += 1
+            seen_map[path]['last_seen'] = now
+        else:
+            seen_map[path] = {'first_seen': now, 'seen_count': 1, 'last_seen': now}
+            new_count += 1
+
+    data['seen'] = seen_map
+    data['total_scrolls'] = data.get('total_scrolls', 0) + new_count
+    save_active_seen(data)
+    return data
+
+
+def get_active_seen_stats(total_image_count: int) -> Dict[str, Any]:
+    """Get seen stats for the current profile (or global)."""
+    data = load_active_seen()
+    seen_count = len(data['seen'])
+    total_scrolls = data.get('total_scrolls', 0)
+    percent_seen = round((seen_count / total_image_count * 100), 1) if total_image_count > 0 else 0
+    return {
+        'seen_count': seen_count,
+        'total_count': total_image_count,
+        'total_scrolls': total_scrolls,
+        'percent_seen': percent_seen,
+    }
+
+
+def reset_active_seen() -> None:
+    """Reset seen history for the current profile (or global)."""
+    save_active_seen({'seen': {}, 'total_scrolls': 0})

@@ -154,12 +154,9 @@ def _is_cache_valid_with_date_source(date_source: str) -> bool:
     if time.time() - _image_cache['timestamp'] > effective_ttl:
         return False
 
-    # Import here to avoid circular imports
-    from app.services.data import load_config
-    config = load_config()
-
-    # Check if folders have changed
-    current_folders = config.get('folders', [])
+    # Get the current active folders (profile-aware)
+    from app.services.profiles import get_current_folders
+    current_folders = get_current_folders()
     cached_mtimes = _image_cache.get('folder_mtimes', {})
 
     if set(current_folders) != set(cached_mtimes.keys()):
@@ -198,6 +195,8 @@ def get_all_images() -> List[str]:
     Returns:
         List of image file paths, sorted newest-first by effective date.
     """
+    global _leaf_folders_cache
+
     # Import here to avoid circular imports
     from app.services.data import get_optimization_settings
 
@@ -208,15 +207,22 @@ def get_all_images() -> List[str]:
     if _is_cache_valid_with_date_source(date_source):
         return _image_cache['images']
 
-    from app.services.data import load_config
-    config = load_config()
+    # Cache is invalid — clear leaf folders cache too so it is rebuilt from the
+    # fresh image list for the current profile.  Without this, a stale
+    # _leaf_folders_cache built for a different profile could be served to users
+    # who happen to match the cached folder_mtimes keys.
+    _leaf_folders_cache = []
+
+    # Get active folders (profile-aware fallback to global config)
+    from app.services.profiles import get_current_folders
+    active_folders = get_current_folders()
 
     # Cache miss or invalid - rescan
     # Each entry is (path, effective_date) — effective_date is computed once and reused
     image_entries: List[Tuple[str, float]] = []
     folder_mtimes: Dict[str, float] = {}
 
-    for folder_path in config.get('folders', []):
+    for folder_path in active_folders:
         expanded_path = expand_path(folder_path)
         if os.path.isdir(expanded_path):
             # Track folder modification time
@@ -269,7 +275,8 @@ def get_leaf_folders() -> List[Dict[str, Any]]:
     """Get list of all leaf folders (folders that actually contain images).
 
     Uses cached image list and caches the computed folder data.
-    Folder cache is invalidated when image cache is invalidated.
+    Folder cache is invalidated when image cache is invalidated or when
+    the current profile's folder list changes.
 
     The ``newest_mtime`` field is populated from the same effective date used for
     sorting (EXIF → filesystem fallback), so folder ordering in the nav is
@@ -280,9 +287,18 @@ def get_leaf_folders() -> List[Dict[str, Any]]:
     """
     global _leaf_folders_cache
 
-    # Return cached folder data if available
+    # Check if cache is still valid
+    # The image cache is profile-aware, so if the profile's folders change,
+    # get_all_images() will invalidate the image cache, which we should respect
     if _leaf_folders_cache:
-        return _leaf_folders_cache
+        # Verify cache is actually based on the current folders
+        from app.services.profiles import get_current_folders
+        current_folders = set(get_current_folders())
+        # Get the folders that were used to build the cache (stored in image cache)
+        cached_mtimes = _image_cache.get('folder_mtimes', {})
+        if current_folders == set(cached_mtimes.keys()):
+            # Cache is valid for this profile
+            return _leaf_folders_cache
 
     # Compute folder data from image list
     images = get_all_images()
@@ -306,22 +322,22 @@ def get_leaf_folders() -> List[Dict[str, Any]]:
                 eff = 0
         if eff > folder_data[folder]['newest_mtime']:
             folder_data[folder]['newest_mtime'] = eff
-    
+
     # Convert to list of folder info objects
     folders = []
     for folder_path, data in folder_data.items():
         # Extract folder name (last component of path)
         parts = folder_path.replace('\\', '/').split('/')
         folder_name = parts[-1] if parts else folder_path
-        
+
         folders.append({
             'path': folder_path,
             'name': folder_name,
             'count': data['count'],
             'newest_mtime': data['newest_mtime']
         })
-    
+
     # Cache the result
     _leaf_folders_cache = folders
-    
+
     return folders

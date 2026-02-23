@@ -28,36 +28,62 @@ def get_settings():
     config = load_config()
     return jsonify({
         'shuffle': config.get('shuffle', False),
+        'profiles_enabled': config.get('profiles_enabled', False),
         'optimizations': get_optimization_settings()
     })
 
 
 @cache_bp.route('/api/settings', methods=['POST'])
 def update_settings():
-    """Update user settings."""
+    """Update user settings.
+
+    Permission model:
+    - User settings (anyone can change): shuffle, fill_screen, auto_advance, auto_advance_delay, preload_distance
+    - Admin settings (admin-only): profiles_enabled, thumbnail_cache, video_poster_cache, date_source, hdd_friendly
+    """
+    from app.services.profiles import is_current_profile_admin
+
     data = request.get_json()
     config = load_config()
+    is_admin = is_current_profile_admin()
 
+    # ---- User settings (anyone can change) ----
     if 'shuffle' in data:
         config['shuffle'] = bool(data['shuffle'])
 
+    # ---- Admin-only settings ----
+    # profiles_enabled toggle requires admin
+    if 'profiles_enabled' in data:
+        if not is_admin:
+            return jsonify({'error': 'Admin role required'}), 403
+        config['profiles_enabled'] = bool(data['profiles_enabled'])
+
     if 'optimizations' in data:
-        # Update only provided optimization settings
+        # Only admins can change date_source and hdd_friendly (system-wide impact)
+        # Users can change their own preferences (fill_screen, auto_advance, preload_distance)
         current_optimizations = get_optimization_settings()
         date_source_changed = False
 
         for key, value in data['optimizations'].items():
             if key in DEFAULT_OPTIMIZATIONS:
-                if key == 'date_source':
-                    # Validate: only 'mtime' or 'ctime' are accepted
-                    if value in ('mtime', 'ctime'):
-                        if current_optimizations.get('date_source') != value:
-                            date_source_changed = True
-                        current_optimizations['date_source'] = value
-                elif key in ('auto_advance_delay', 'preload_distance'):
-                    current_optimizations[key] = int(value)
+                # System-wide settings: admin only
+                if key in ('date_source', 'hdd_friendly', 'thumbnail_cache', 'video_poster_cache'):
+                    if not is_admin:
+                        continue  # Skip non-admin changes to system settings
+                    if key == 'date_source':
+                        # Validate: only 'mtime' or 'ctime' are accepted
+                        if value in ('mtime', 'ctime'):
+                            if current_optimizations.get('date_source') != value:
+                                date_source_changed = True
+                            current_optimizations['date_source'] = value
+                    else:
+                        current_optimizations[key] = bool(value)
+                # User preference settings: anyone can change
                 else:
-                    current_optimizations[key] = bool(value)
+                    if key in ('auto_advance_delay', 'preload_distance'):
+                        current_optimizations[key] = int(value)
+                    else:
+                        current_optimizations[key] = bool(value)
 
         config['optimizations'] = current_optimizations
 
@@ -70,6 +96,7 @@ def update_settings():
         'success': True,
         'settings': {
             'shuffle': config.get('shuffle', False),
+            'profiles_enabled': config.get('profiles_enabled', False),
             'optimizations': get_optimization_settings()
         }
     })
@@ -107,7 +134,11 @@ def get_cache_info():
 
 @cache_bp.route('/api/cache', methods=['DELETE'])
 def clear_cache():
-    """Clear all cached files (thumbnails, WebM conversions, video posters)."""
+    """Clear all cached files (thumbnails, WebM conversions, video posters). Admin only."""
+    from app.services.profiles import is_current_profile_admin
+    if not is_current_profile_admin():
+        return jsonify({'error': 'Admin role required'}), 403
+
     deleted_count = 0
     errors = []
     

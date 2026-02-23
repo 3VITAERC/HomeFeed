@@ -54,6 +54,9 @@ let loadingFailsafeTimeout = null;
 // Pending confirmation action (for reusable confirm modal)
 let pendingConfirmAction = null;
 
+// Current profile admin status (fetched during settings load, used across features)
+let currentProfileIsAdmin = false;
+
 // ============ Initialization ============
 
 /**
@@ -450,6 +453,25 @@ function setupEventListeners() {
                 state.optimizations.hdd_friendly = e.target.checked;
             } catch (error) {
                 console.error('Failed to save HDD friendly setting:', error);
+            }
+        });
+    }
+
+    // Enable Profiles toggle (now in Profiles tab, admin only)
+    const toggleProfiles = document.getElementById('toggleProfiles');
+    if (toggleProfiles) {
+        toggleProfiles.addEventListener('change', async (e) => {
+            try {
+                await API.updateSettings({ profiles_enabled: e.target.checked });
+                // Grey out / un-grey the profile info row immediately
+                updateProfileRowGreyState(e.target.checked);
+                if (!e.target.checked) {
+                    // Profiles disabled — reload to return to single-user mode
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error('Failed to save profiles_enabled setting:', error);
+                e.target.checked = !e.target.checked; // revert on error
             }
         });
     }
@@ -2275,7 +2297,10 @@ async function loadSettingsModalData() {
         const useCtime = (settings.optimizations?.date_source ?? 'mtime') === 'ctime';
         if (dateSourceToggle) dateSourceToggle.checked = useCtime;
         if (dateSourceLabel) dateSourceLabel.textContent = useCtime ? 'Created Date' : 'Modified Date';
-        
+
+        const profilesToggle = document.getElementById('toggleProfiles');
+        if (profilesToggle) profilesToggle.checked = settings.profiles_enabled !== false;
+
         // Setup add folder form
         const addFolderForm = document.getElementById('settingsAddFolderForm');
         if (addFolderForm) {
@@ -2413,32 +2438,174 @@ function renderSeenStats() {
 }
 
 /**
- * Setup logout button - check auth status and show/hide logout button in header
+ * Apply or remove the greyed-out state on the profile info row main content.
+ * Called when the Enable Profiles toggle changes and on initial settings load.
+ *
+ * @param {boolean} profilesEnabled - Current value of the profiles_enabled setting
+ */
+function updateProfileRowGreyState(profilesEnabled) {
+    const profileInfoMain = document.getElementById('profileInfoMain');
+    if (!profileInfoMain) return;
+    if (profilesEnabled) {
+        profileInfoMain.classList.remove('profiles-disabled');
+    } else {
+        profileInfoMain.classList.add('profiles-disabled');
+    }
+}
+
+/**
+ * Setup logout button and Profiles tab in settings modal.
+ * Fetches profile/auth info and wires up all profile-related UI.
  */
 async function setupLogoutButton() {
     const logoutBtn = document.getElementById('settingsLogoutHeaderBtn');
-    
+
+    // ---- Profiles tab setup ----
+    const profilesTab = document.getElementById('settingsProfilesTab');
+    const switchProfileBtn = document.getElementById('settingsSwitchProfileBtn');
+    const manageProfilesBtn = document.getElementById('settingsManageProfilesBtn');
+    const profileInfoRow = document.getElementById('profileInfoRow');
+    const manageProfilesRow = document.getElementById('manageProfilesRow');
+    const profilesToggleRow = document.getElementById('profilesToggleRow');
+    const deleteAllProfilesRow = document.getElementById('deleteAllProfilesRow');
+    const deleteAllProfilesBtn = document.getElementById('deleteAllProfilesBtn');
+    const profileInfoName = document.getElementById('profileInfoName');
+    const profileInfoRole = document.getElementById('profileInfoRole');
+
+    try {
+        const meRes = await fetch('/api/profiles/me');
+        const me = await meRes.json();
+        const hasProfile = me.profiles_enabled && me.profile;
+        const isAdmin = me.is_admin === true;
+        const adminPasswordSet = me.admin_password_set === true;
+
+        // Store admin status globally for use by other functions (e.g. showTrashModal)
+        currentProfileIsAdmin = isAdmin;
+
+        // Always show Profiles tab so admins can enable profiles and create first profile
+        if (profilesTab) profilesTab.style.display = '';
+
+        // Show profile-specific content if profiles exist or a profile is selected
+        if (hasProfile || me.profiles_enabled) {
+
+            // Current profile info row
+            if (hasProfile && profileInfoRow) {
+                profileInfoName.textContent = `${me.profile.emoji} ${me.profile.name}`;
+                profileInfoRole.textContent = me.profile.role === 'admin' ? 'Admin' : 'User';
+                profileInfoRow.style.display = '';
+
+                // Apply grey-out state based on current profiles_enabled setting.
+                // Read from the toggle checkbox (already populated from settings API) rather than
+                // me.profiles_enabled which reflects profiles_exist() not the config setting.
+                const profilesToggleEl = document.getElementById('toggleProfiles');
+                const profilesCurrentlyEnabled = profilesToggleEl ? profilesToggleEl.checked : true;
+                updateProfileRowGreyState(profilesCurrentlyEnabled);
+
+                // Switch Profile button
+                if (switchProfileBtn) {
+                    switchProfileBtn.style.display = '';
+                    switchProfileBtn.onclick = async () => {
+                        try {
+                            const res = await fetch('/api/profiles/logout', {method: 'POST'});
+                            const data = await res.json();
+                            if (data.success) {
+                                window.location.href = data.redirect || '/profiles';
+                            }
+                        } catch (e) {
+                            console.error('Failed to switch profile:', e);
+                        }
+                    };
+                }
+            }
+
+            // Admin-only rows
+            if (isAdmin) {
+                // Delete All Profile Data button (Feature 5) - only shown if profiles exist
+                if (deleteAllProfilesRow) {
+                    deleteAllProfilesRow.style.display = '';
+                    if (deleteAllProfilesBtn) {
+                        deleteAllProfilesBtn.onclick = () => {
+                            showConfirmModal({
+                                title: 'Delete All Profile Data?',
+                                message: 'This will permanently remove all other profiles along with their favorites, watch history, and folder settings. Your admin profile will be kept. This cannot be undone.',
+                                confirmText: 'Delete All',
+                                cancelText: 'Cancel',
+                                danger: true,
+                                onConfirm: async () => {
+                                    try {
+                                        const res = await fetch('/api/profiles/all', {method: 'DELETE'});
+                                        const data = await res.json();
+                                        if (!data.success) {
+                                            alert(data.error || 'Failed to delete profiles');
+                                        }
+                                    } catch (e) {
+                                        alert('An error occurred while deleting profiles.');
+                                    }
+                                }
+                            });
+                        };
+                    }
+                }
+            }
+        }
+
+        // Admin-only controls that are always visible (even if no profiles exist yet)
+        if (isAdmin) {
+            // Enable Profiles toggle
+            if (profilesToggleRow) profilesToggleRow.style.display = '';
+        }
+
+        // Manage Profiles row - always visible to admins; visible to users when they have a profile
+        if (isAdmin || hasProfile) {
+            if (manageProfilesRow) {
+                manageProfilesRow.style.display = '';
+                if (manageProfilesBtn) {
+                    manageProfilesBtn.onclick = async () => {
+                        if (isAdmin && adminPasswordSet) {
+                            const pw = prompt('Enter server admin password to access Manage Profiles:');
+                            if (pw === null) return; // cancelled
+                            try {
+                                const res = await fetch('/api/profiles/verify-admin-password', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({password: pw}),
+                                });
+                                const data = await res.json();
+                                if (!data.success) {
+                                    alert('Incorrect admin password.');
+                                    return;
+                                }
+                            } catch (e) {
+                                alert('Failed to verify password. Please try again.');
+                                return;
+                            }
+                        }
+                        window.location.href = '/profiles';
+                    };
+                }
+            }
+        }
+    } catch (e) {
+        // Don't hide profiles tab on error; it's always shown now
+    }
+
+    // ---- Global auth logout button (now in Profiles tab row) ----
     if (!logoutBtn) return;
-    
+
     try {
         const response = await fetch('/api/auth/status');
         const data = await response.json();
-        
-        // Only show logout button if auth is enabled and user is authenticated
+
         if (data.auth_enabled && data.authenticated) {
             logoutBtn.style.display = 'inline-flex';
-            
+
             logoutBtn.onclick = async () => {
                 try {
                     const logoutResponse = await fetch('/logout', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
+                        headers: { 'Content-Type': 'application/json' }
                     });
-                    
                     if (logoutResponse.ok) {
-                        // Redirect to login page
                         window.location.href = '/login';
                     }
                 } catch (error) {
@@ -2468,12 +2635,16 @@ function showTrashModal() {
     if (trashCountInfo) {
         trashCountInfo.textContent = `${count} photo${count !== 1 ? 's' : ''} marked for deletion`;
     }
-    
-    // Enable/disable empty trash button based on count
+
+    // Enable/disable empty trash button based on count AND admin status.
+    // Non-admin users can review trash but cannot permanently delete files.
     if (emptyTrashBtn) {
-        emptyTrashBtn.disabled = count === 0;
+        emptyTrashBtn.disabled = count === 0 || !currentProfileIsAdmin;
+        emptyTrashBtn.title = !currentProfileIsAdmin
+            ? 'Only admins can permanently delete photos'
+            : '';
     }
-    
+
     if (trashModal) trashModal.style.display = 'flex';
 }
 

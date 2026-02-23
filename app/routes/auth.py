@@ -68,9 +68,11 @@ def login_submit():
 
     # Attempt login
     if session_login(password):
+        from app.services.profiles import get_profiles_enabled
+        dest = url_for('profiles.profile_picker') if get_profiles_enabled() else url_for('pages.index')
         if request.is_json:
-            return jsonify({'success': True, 'redirect': url_for('pages.index')})
-        return redirect(url_for('pages.index'))
+            return jsonify({'success': True, 'redirect': dest})
+        return redirect(dest)
 
     # Login failed
     if request.is_json:
