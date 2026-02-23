@@ -5,11 +5,13 @@ Netflix-style user profiles with optional per-profile passwords.
 Each profile has its own favorites, watch history, and folder configuration.
 """
 
+import copy
 import os
 import json
 import hashlib
 import secrets
-from typing import Optional, Dict, List, Any
+import time
+from typing import Optional, Dict, List, Any, Tuple
 from filelock import FileLock
 from flask import session
 
@@ -17,6 +19,20 @@ from app.config import PROFILES_FILE, PROFILES_DIR
 
 
 PROFILE_SESSION_KEY = 'profile_id'
+
+# Sentinel for distinguishing "not set" from None in per-request g cache
+_UNSET = object()
+
+# ---------------------------------------------------------------------------
+# In-memory profiles cache
+# profiles.json is read on almost every request (before_request, is_path_allowed,
+# get_current_folders, etc.).  Caching it in memory eliminates the disk I/O
+# storm that occurred when serving thousands of images on page load.
+# Cache is updated immediately on every save_profiles() call.
+# ---------------------------------------------------------------------------
+
+_PROFILES_CACHE_TTL = 60.0  # seconds between forced re-reads from disk
+_profiles_cache: Tuple[Optional[Dict[str, Any]], float] = (None, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -45,22 +61,39 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def load_profiles() -> Dict[str, Any]:
-    """Load profiles data from profiles.json."""
+    """Load profiles data from profiles.json (with in-memory caching).
+
+    Returns a deep copy so callers can freely modify the dict without
+    corrupting the cache.
+    """
+    global _profiles_cache
+    cached_data, cached_ts = _profiles_cache
+    if cached_data is not None and (time.time() - cached_ts) < _PROFILES_CACHE_TTL:
+        return copy.deepcopy(cached_data)
+
+    # Cache miss or expired — read from disk
     if os.path.exists(PROFILES_FILE):
         try:
             with open(PROFILES_FILE, 'r') as f:
-                return json.load(f)
+                result = json.load(f)
         except (json.JSONDecodeError, IOError):
-            return {'profiles': []}
-    return {'profiles': []}
+            result = {'profiles': []}
+    else:
+        result = {'profiles': []}
+
+    _profiles_cache = (result, time.time())
+    return copy.deepcopy(result)
 
 
 def save_profiles(data: Dict[str, Any]) -> None:
-    """Save profiles data to profiles.json."""
+    """Save profiles data to profiles.json and update the in-memory cache."""
+    global _profiles_cache
     lock = FileLock(PROFILES_FILE + '.lock')
     with lock:
         with open(PROFILES_FILE, 'w') as f:
             json.dump(data, f, indent=2)
+    # Update cache so subsequent reads don't need to hit disk
+    _profiles_cache = (copy.deepcopy(data), time.time())
 
 
 # ---------------------------------------------------------------------------
@@ -274,37 +307,71 @@ def is_current_profile_admin() -> bool:
 
     When profiles exist but no one is logged in, returns False to prevent
     unauthenticated users from performing admin operations.
+
+    Result is cached on flask.g for the duration of the current request.
     """
+    try:
+        from flask import g
+        cached = getattr(g, '_homefeed_is_admin', _UNSET)
+        if cached is not _UNSET:
+            return cached
+    except RuntimeError:
+        pass
+
     profile_id = get_current_profile_id()
     if not profile_id:
-        return not profiles_exist()
-    profile = get_profile(profile_id)
-    return bool(profile and profile.get('role') == 'admin')
+        result = not profiles_exist()
+    else:
+        profile = get_profile(profile_id)
+        result = bool(profile and profile.get('role') == 'admin')
+
+    try:
+        from flask import g
+        g._homefeed_is_admin = result
+    except RuntimeError:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Profile-aware config (folders)
 # ---------------------------------------------------------------------------
 
+# Per-profile config cache: dict keyed by profile_id → (data, timestamp)
+_PROFILE_CONFIG_CACHE_TTL = 60.0
+_profile_config_cache: Dict[str, Tuple[Dict[str, Any], float]] = {}
+
+
 def load_profile_config(profile_id: str) -> Dict[str, Any]:
-    """Load the folder/config data for a specific profile."""
+    """Load the folder/config data for a specific profile (with in-memory caching)."""
+    cached = _profile_config_cache.get(profile_id)
+    if cached is not None:
+        data, ts = cached
+        if (time.time() - ts) < _PROFILE_CONFIG_CACHE_TTL:
+            return copy.deepcopy(data)
+
     config_file = get_profile_data_file(profile_id, 'config.json')
     if os.path.exists(config_file):
         try:
             with open(config_file, 'r') as f:
-                return json.load(f)
+                result = json.load(f)
         except (json.JSONDecodeError, IOError):
-            pass
-    return {'folders': []}
+            result = {'folders': []}
+    else:
+        result = {'folders': []}
+
+    _profile_config_cache[profile_id] = (result, time.time())
+    return copy.deepcopy(result)
 
 
 def save_profile_config(profile_id: str, config: Dict[str, Any]) -> None:
-    """Save the folder/config data for a specific profile."""
+    """Save the folder/config data for a specific profile and update cache."""
     config_file = get_profile_data_file(profile_id, 'config.json')
     lock = FileLock(config_file + '.lock')
     with lock:
         with open(config_file, 'w') as f:
             json.dump(config, f, indent=2)
+    _profile_config_cache[profile_id] = (copy.deepcopy(config), time.time())
 
 
 def get_current_folders() -> List[str]:
@@ -315,7 +382,20 @@ def get_current_folders() -> List[str]:
     - Regular profiles use their own per-profile folder list.
     - Falls back to global config when no profile is active OR when the
       profiles feature is disabled (is_profiles_active() is False).
+
+    Result is cached on flask.g for the duration of the current request so
+    multiple callers within the same request (before_request, is_path_allowed,
+    cache validity checks) only compute this once.
     """
+    # Per-request cache
+    try:
+        from flask import g
+        cached = getattr(g, '_homefeed_current_folders', _UNSET)
+        if cached is not _UNSET:
+            return cached
+    except RuntimeError:
+        pass  # Outside request context (tests, background tasks)
+
     from app.services.data import load_config
     profile_id = get_current_profile_id()
     if profile_id and is_profiles_active():
@@ -323,12 +403,21 @@ def get_current_folders() -> List[str]:
         if profile and profile.get('role') == 'admin':
             # Admins always see the full global folder list
             config = load_config()
-            return config.get('folders', [])
-        config = load_profile_config(profile_id)
-        return config.get('folders', [])
-    # Fallback: global config
-    config = load_config()
-    return config.get('folders', [])
+            result = config.get('folders', [])
+        else:
+            config = load_profile_config(profile_id)
+            result = config.get('folders', [])
+    else:
+        # Fallback: global config
+        config = load_config()
+        result = config.get('folders', [])
+
+    try:
+        from flask import g
+        g._homefeed_current_folders = result
+    except RuntimeError:
+        pass
+    return result
 
 
 def get_profiles_enabled() -> bool:
@@ -350,5 +439,22 @@ def is_profiles_active() -> bool:
     per-profile files.  When the admin toggles 'Enable Profiles' off, this
     returns False so every read/write falls back to the global top-level files,
     giving the app the same behaviour as if profiles had never been created.
+
+    Result is cached on flask.g for the duration of the current request.
     """
-    return profiles_exist() and get_profiles_enabled()
+    try:
+        from flask import g
+        cached = getattr(g, '_homefeed_profiles_active', _UNSET)
+        if cached is not _UNSET:
+            return cached
+    except RuntimeError:
+        pass
+
+    result = profiles_exist() and get_profiles_enabled()
+
+    try:
+        from flask import g
+        g._homefeed_profiles_active = result
+    except RuntimeError:
+        pass
+    return result

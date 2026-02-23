@@ -501,6 +501,63 @@ The image cache has been optimized for large photo libraries:
 - **Single-pass effective date collection:** During folder scan, `get_effective_date()` is called once per file and stored in `(path, effective_date)` tuples, avoiding double filesystem/EXIF calls during sorting
 - **Thread-safe writes:** All JSON file saves use `FileLock` to prevent corruption with multiple workers
 
+### Multi-Layer Request Caching (Profiles Feature)
+
+The profiles feature introduced potential N²-level disk I/O since every request path checks profile configuration. This has been solved with three layers of caching:
+
+#### 1. Module-Level In-Memory TTL Cache
+
+Both `load_config()` in `data.py` and `load_profiles()` in `profiles.py` cache their results in memory for **60 seconds**.
+
+```python
+# In data.py and profiles.py
+_config_cache: Tuple[Optional[Dict], float] = (None, 0.0)  # (data, timestamp)
+_CONFIG_CACHE_TTL = 60.0  # seconds
+
+def load_config():
+    cached_data, cached_ts = _config_cache
+    if cached_data is not None and (time.time() - cached_ts) < _CONFIG_CACHE_TTL:
+        return copy.deepcopy(cached_data)  # return independent copy
+    # Read from disk, store in cache
+```
+
+- Cache is **immediately updated** (and TTL reset) on every `save_config()` / `save_profiles()` call
+- Impact: On a library with 7500 images, instead of 7500 JSON reads from disk on page load (one per `/image` request), there's at most one disk read per minute
+- Per-profile folder config has similar caching via `_profile_config_cache` dict
+
+#### 2. Per-Request Flask `g` Cache
+
+Critical profile-resolution functions are cached on `flask.g` for the duration of the current request:
+
+- `is_profiles_active()` — consolidated boolean combining profiles enabled + profiles exist
+- `get_current_folders()` — computed once, reused by all callers
+- `is_current_profile_admin()` — role check computed once
+- `get_optimization_settings()` — settings lookup cached before tight loops
+
+```python
+# Within a single request, any function calling get_optimization_settings()
+# multiple times (e.g., building 7500 image URLs in a loop) only computes once
+for img in 7500_images:
+    url = format_image_url(img)  # calls get_optimization_settings() 7500 times
+                                 # but only computes once, then returns cached result
+```
+
+#### 3. Per-Profile Config In-Memory Cache
+
+Profile-specific folder configs are cached in `_profile_config_cache` with the same TTL/update strategy as the global config.
+
+**Why this matters:**
+
+Before these caches, a page load with 7500 images would trigger:
+- 7500 × `before_request` → 2 disk reads each (config + profiles) = 15,000 reads
+- 7500 × `/image?path=...` → `is_path_allowed()` → `get_current_folders()` → 3-4 disk reads = 22,500+ reads
+- **Total: ~37,500 synchronous disk reads per page load**
+
+After caching:
+- First request: reads config.json + profiles.json (warm cache)
+- Subsequent 7499 requests: all reads served from memory
+- ~2 disk reads per page load + per-request overhead from network latency only
+
 ### Path Security
 
 All image-serving endpoints validate paths:
