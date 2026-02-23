@@ -99,7 +99,7 @@ def create_app(config=None):
 
     # Add authentication and profile checks before each request
     from app.services import is_auth_enabled, is_authenticated
-    from app.services.profiles import is_profiles_enabled, profiles_exist, is_profile_selected
+    from app.services.profiles import is_profiles_active, is_profile_selected
 
     @app.before_request
     def check_auth():
@@ -130,8 +130,10 @@ def create_app(config=None):
                 return jsonify({'error': 'Authentication required'}), 401
 
         # ---- Step 2: Profile selection ----
-        # Skip if profiles feature is disabled
-        if not is_profiles_enabled():
+        # is_profiles_active() = profiles_enabled AND profiles_exist().
+        # Both underlying reads are served from in-memory cache and the result
+        # is also cached on flask.g for the rest of this request.
+        if not is_profiles_active():
             return None
 
         # Allow profile routes (picker, login, etc.)
@@ -142,8 +144,8 @@ def create_app(config=None):
         if request.endpoint and request.endpoint.startswith('cache.'):
             return None
 
-        # If profiles exist and none is selected, redirect to picker
-        if profiles_exist() and not is_profile_selected():
+        # profiles_exist() is already confirmed true by is_profiles_active() above
+        if not is_profile_selected():
             if request.accept_mimetypes.accept_html:
                 return redirect(url_for('profiles.profile_picker'))
             return jsonify({'error': 'Profile selection required'}), 401

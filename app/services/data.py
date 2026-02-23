@@ -3,10 +3,11 @@ Data management services for HomeFeed.
 Handles loading and saving configuration, favorites, trash, and seen data.
 """
 
+import copy
 import os
 import json
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 from filelock import FileLock
 
 from app.config import (
@@ -17,46 +18,103 @@ from app.config import (
     DEFAULT_OPTIMIZATIONS,
 )
 
+# ---------------------------------------------------------------------------
+# In-memory config cache
+# Eliminates repeated disk reads for config.json across many concurrent
+# requests (e.g. serving 7500+ images on first load).
+# The cache is invalidated (and updated) on every save_config() call, so
+# in-app changes always take immediate effect.  External edits to config.json
+# are picked up after _CONFIG_CACHE_TTL seconds at most.
+# ---------------------------------------------------------------------------
+
+_CONFIG_CACHE_TTL = 60.0  # seconds between forced re-reads from disk
+# Stored as a tuple (data_dict, timestamp) so replacement is one atomic
+# assignment (safe under CPython's GIL without an explicit lock).
+_config_cache: Tuple[Optional[Dict[str, Any]], float] = (None, 0.0)
+
+# Sentinel for per-request g-cache "not set" checks
+_UNSET = object()
+
 
 def load_config() -> Dict[str, Any]:
-    """Load configuration from config.json.
-    
+    """Load configuration from config.json (with in-memory caching).
+
+    Returns a deep copy so callers can freely modify the dict without
+    corrupting the cache.
+
     Returns:
         Configuration dictionary with 'folders' and 'shuffle' keys
     """
+    global _config_cache
+    cached_data, cached_ts = _config_cache
+    if cached_data is not None and (time.time() - cached_ts) < _CONFIG_CACHE_TTL:
+        return copy.deepcopy(cached_data)
+
+    # Cache miss or expired — read from disk
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
+                result = json.load(f)
         except (json.JSONDecodeError, IOError):
-            return {'folders': [], 'shuffle': False}
-    return {'folders': [], 'shuffle': False}
+            result = {'folders': [], 'shuffle': False}
+    else:
+        result = {'folders': [], 'shuffle': False}
+
+    _config_cache = (result, time.time())
+    return copy.deepcopy(result)
 
 
 def save_config(config: Dict[str, Any]) -> None:
-    """Save configuration to config.json.
-    
+    """Save configuration to config.json and update the in-memory cache.
+
     Args:
         config: Configuration dictionary to save
     """
+    global _config_cache
     lock = FileLock(CONFIG_FILE + '.lock')
     with lock:
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
+    # Update module-level cache so subsequent reads don't need to hit disk
+    _config_cache = (copy.deepcopy(config), time.time())
+    # Invalidate the per-request g-cache so the rest of this request sees the
+    # updated settings (e.g. after toggling thumbnail_cache in settings).
+    try:
+        from flask import g
+        g._homefeed_optimization_settings = _UNSET  # force recompute
+    except RuntimeError:
+        pass
 
 
 def get_optimization_settings() -> Dict[str, bool]:
     """Get optimization settings with defaults.
-    
+
+    Result is cached on flask.g so that tight loops (e.g. building 7500 image
+    URLs via format_image_url) only compute the settings once per request.
+
     Returns:
         Dictionary of optimization settings
     """
+    try:
+        from flask import g
+        cached = getattr(g, '_homefeed_optimization_settings', _UNSET)
+        if cached is not _UNSET:
+            return cached
+    except RuntimeError:
+        pass  # Outside request context
+
     config = load_config()
     optimizations = config.get('optimizations', {})
     # Apply defaults for any missing settings
     for key, value in DEFAULT_OPTIMIZATIONS.items():
         if key not in optimizations:
             optimizations[key] = value
+
+    try:
+        from flask import g
+        g._homefeed_optimization_settings = optimizations
+    except RuntimeError:
+        pass
     return optimizations
 
 
