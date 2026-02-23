@@ -76,7 +76,7 @@ def print_startup_info(port):
     # Show platform-specific production server instructions
     if sys.platform == 'win32':
         print("  For better performance with many images, use waitress:")
-        print(f"    waitress-serve --port={port} server:app")
+        print(f"    waitress-serve --host=0.0.0.0 --port={port} server:app")
     else:
         print("  For better performance with many images, use gunicorn:")
         print(f"    gunicorn -w 4 -b 0.0.0.0:{port} server:app")

@@ -56,7 +56,7 @@ gunicorn -w 4 -b 0.0.0.0:7123 server:app
 
 *Windows:*
 ```bash
-waitress-serve --port=7123 server:app
+waitress-serve --host=0.0.0.0 --port=7123 server:app
 ```
 
 You'll see output like:
@@ -428,7 +428,7 @@ py -m venv venv
 pip install -r requirements.txt
 
 # Run the server
-waitress-serve --port=7123 server:app
+waitress-serve --host=0.0.0.0 --port=7123 server:app
 ```
 
 > **Note:** Run `.\venv\Scripts\activate` each time you open a new terminal. You'll see `(venv)` in your prompt when active.
