@@ -4,6 +4,7 @@ Provides cached access to the list of images from configured folders.
 """
 
 import os
+import json
 import time
 import logging
 from datetime import datetime
@@ -18,6 +19,7 @@ from app.config import (
     SUPPORTED_FORMATS,
     VIDEO_FORMATS,
     MAX_VIDEO_SIZE,
+    EXIF_DATE_CACHE_FILE,
 )
 from app.services.path_utils import expand_path, normalize_path
 
@@ -26,15 +28,62 @@ from app.services.path_utils import expand_path, normalize_path
 _image_cache: Dict[str, Any] = {
     'images': None,
     'timestamp': 0,
-    'folder_mtimes': {},  # Track folder modification times
-    'date_source': None,  # Track which date_source was used, to detect setting changes
+    'folder_mtimes': {},   # Track folder modification times
+    'date_source': None,   # Track which date_source was used, to detect setting changes
+    'folder_index': {},    # Dict[folder_path, List[image_path]] for O(1) folder lookups
 }
 
 # Leaf folders cache (computed from image list)
 _leaf_folders_cache: List[Dict[str, Any]] = []
 
+# ---------------------------------------------------------------------------
+# Persistent EXIF date cache
+#
+# Maps "path:mtime:size" -> EXIF timestamp (float) or None (no EXIF found).
+# Survives server restarts, so Pillow is only called for new or changed files.
+# Each gunicorn worker maintains its own in-memory copy and independently
+# reads/writes the shared cache file; since the cache is purely additive, any
+# write race only results in a few redundant PIL calls on the next scan — never
+# incorrect data.
+# ---------------------------------------------------------------------------
+_exif_date_cache: Dict[str, Optional[float]] = {}
+_exif_date_cache_dirty: bool = False
 
-def get_effective_date(path: str, date_source: str) -> float:
+
+def _load_exif_date_cache() -> None:
+    """Load the persistent EXIF date cache from disk."""
+    global _exif_date_cache
+    try:
+        if os.path.exists(EXIF_DATE_CACHE_FILE):
+            with open(EXIF_DATE_CACHE_FILE, 'r') as f:
+                _exif_date_cache = json.load(f)
+            logger.debug("Loaded %d EXIF date cache entries from disk", len(_exif_date_cache))
+    except Exception as e:
+        logger.warning("Could not load EXIF date cache (will rebuild): %s", e)
+        _exif_date_cache = {}
+
+
+def _save_exif_date_cache() -> None:
+    """Write the EXIF date cache to disk if it has new entries."""
+    global _exif_date_cache_dirty
+    if not _exif_date_cache_dirty:
+        return
+    try:
+        with open(EXIF_DATE_CACHE_FILE, 'w') as f:
+            json.dump(_exif_date_cache, f)
+        _exif_date_cache_dirty = False
+        logger.debug("Saved EXIF date cache (%d entries)", len(_exif_date_cache))
+    except Exception as e:
+        logger.warning("Could not save EXIF date cache: %s", e)
+
+
+def get_effective_date(
+    path: str,
+    date_source: str,
+    file_mtime: Optional[float] = None,
+    file_size: Optional[int] = None,
+    file_ctime: Optional[float] = None,
+) -> float:
     """Return the best available date (as a Unix timestamp) for a file.
 
     Hierarchy:
@@ -47,50 +96,92 @@ def get_effective_date(path: str, date_source: str) -> float:
     EXIF extraction requires Pillow.  If Pillow is not installed, or the file
     is a video, we silently skip to the filesystem fallback.
 
+    When ``file_mtime`` and ``file_size`` are provided (from a prior os.stat()
+    call in the scan loop), this function checks the persistent EXIF date cache
+    before opening the file with Pillow.  On a cache hit the file is never
+    opened at all, making subsequent scans effectively free for unchanged files.
+
     Args:
         path:        Absolute path to the file.
         date_source: ``'mtime'`` or ``'ctime'`` — controls filesystem fallback order.
+        file_mtime:  Pre-fetched st_mtime (avoids an extra syscall).
+        file_size:   Pre-fetched st_size  (used as part of the cache key).
+        file_ctime:  Pre-fetched st_ctime (avoids an extra syscall for the fallback).
 
     Returns:
         Unix timestamp (float).  Falls back to 0 if nothing is readable.
     """
+    global _exif_date_cache, _exif_date_cache_dirty
+
     # --- 1 & 2: try EXIF for image files ---
     suffix = Path(path).suffix.lower()
     if suffix not in VIDEO_FORMATS:
-        try:
-            from PIL import Image
+        # Build a cache key when we have the file stats (both mtime and size required)
+        cache_key: Optional[str] = None
+        if file_mtime is not None and file_size is not None:
+            cache_key = f"{path}:{int(file_mtime)}:{file_size}"
 
-            with Image.open(path) as img:
-                exif = None
-                try:
-                    exif = img._getexif()
-                except (AttributeError, Exception):
-                    pass
+        # Check persistent EXIF cache before touching the file with Pillow
+        if cache_key is not None and cache_key in _exif_date_cache:
+            cached_exif = _exif_date_cache[cache_key]
+            if cached_exif is not None:
+                return cached_exif
+            # cached_exif is None  →  we previously confirmed this file has no EXIF date;
+            # skip Pillow and fall straight through to the filesystem fallback.
+        else:
+            # Cache miss — open the file and extract EXIF
+            exif_ts: Optional[float] = None
+            try:
+                from PIL import Image
 
-                if exif:
-                    # Prefer DateTimeOriginal (tag 36867) then DateTimeDigitized (36868)
-                    for tag_id in (36867, 36868):
-                        raw = exif.get(tag_id)
-                        if raw:
-                            try:
-                                dt = datetime.strptime(str(raw).strip(), '%Y:%m:%d %H:%M:%S')
-                                return dt.timestamp()
-                            except (ValueError, OverflowError):
-                                pass
-        except ImportError:
-            pass  # Pillow not installed — fall through to filesystem dates
-        except Exception:
-            pass  # Corrupt file or unreadable EXIF — fall through
+                with Image.open(path) as img:
+                    exif = None
+                    try:
+                        exif = img._getexif()
+                    except (AttributeError, Exception):
+                        pass
+
+                    if exif:
+                        # Prefer DateTimeOriginal (tag 36867) then DateTimeDigitized (36868)
+                        for tag_id in (36867, 36868):
+                            raw = exif.get(tag_id)
+                            if raw:
+                                try:
+                                    dt = datetime.strptime(str(raw).strip(), '%Y:%m:%d %H:%M:%S')
+                                    exif_ts = dt.timestamp()
+                                    break
+                                except (ValueError, OverflowError):
+                                    pass
+            except ImportError:
+                pass  # Pillow not installed — fall through to filesystem dates
+            except Exception:
+                pass  # Corrupt file or unreadable EXIF — fall through
+
+            # Store result in cache (None = "no EXIF date" so we don't retry PIL next scan)
+            if cache_key is not None:
+                _exif_date_cache[cache_key] = exif_ts
+                _exif_date_cache_dirty = True
+
+            if exif_ts is not None:
+                return exif_ts
 
     # --- 3: filesystem fallback ---
-    try:
-        mtime = os.path.getmtime(path)
-    except OSError:
-        mtime = 0
-    try:
-        ctime = os.path.getctime(path)
-    except OSError:
-        ctime = 0
+    # Use pre-fetched stats when available (avoids extra syscalls)
+    if file_mtime is not None:
+        mtime = file_mtime
+    else:
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            mtime = 0
+
+    if file_ctime is not None:
+        ctime = file_ctime
+    else:
+        try:
+            ctime = os.path.getctime(path)
+        except OSError:
+            ctime = 0
 
     if date_source == 'ctime':
         return ctime if ctime else mtime
@@ -180,6 +271,7 @@ def invalidate_cache() -> None:
     _image_cache['folder_mtimes'] = {}
     _image_cache['effective_dates'] = {}
     _image_cache['date_source'] = None
+    _image_cache['folder_index'] = {}
     _leaf_folders_cache = []
 
 
@@ -230,22 +322,46 @@ def get_all_images() -> List[str]:
 
             for root, dirs, files in os.walk(expanded_path):
                 for file in files:
-                    if Path(file).suffix.lower() in SUPPORTED_FORMATS:
+                    suffix = Path(file).suffix.lower()
+                    if suffix in SUPPORTED_FORMATS:
                         full_path = os.path.join(root, file)
+
+                        # Single os.stat() call — used for the size check, EXIF cache
+                        # key, and filesystem date fallback. Avoids the separate
+                        # os.path.getsize() / os.path.getmtime() / os.path.getctime()
+                        # calls that were previously scattered across this loop.
+                        try:
+                            file_stat = os.stat(full_path)
+                            file_size = file_stat.st_size
+                            file_mtime = file_stat.st_mtime
+                            file_ctime = file_stat.st_ctime
+                        except OSError:
+                            continue  # Skip unreadable files
+
                         # Check video size limit
-                        if Path(file).suffix.lower() in VIDEO_FORMATS:
-                            try:
-                                if os.path.getsize(full_path) > MAX_VIDEO_SIZE:
-                                    continue  # Skip videos over size limit
-                            except OSError:
-                                continue  # Skip if can't read file
-                        # Compute effective sort date (EXIF → filesystem fallback)
-                        effective_date = get_effective_date(full_path, date_source)
+                        if suffix in VIDEO_FORMATS:
+                            if file_size > MAX_VIDEO_SIZE:
+                                continue  # Skip videos over size limit
+
+                        # Compute effective sort date.
+                        # Passing file stats lets get_effective_date() consult the
+                        # persistent EXIF cache and skip PIL for unchanged files.
+                        effective_date = get_effective_date(
+                            full_path, date_source, file_mtime, file_size, file_ctime
+                        )
                         image_entries.append((full_path, effective_date))
 
     # Sort newest-first by effective date
     image_entries.sort(key=lambda x: x[1], reverse=True)
     images = [entry[0] for entry in image_entries]
+
+    # Build folder index for O(1) lookups in get_images_by_folder()
+    folder_index: Dict[str, List[str]] = {}
+    for img_path in images:
+        folder = os.path.dirname(img_path)
+        if folder not in folder_index:
+            folder_index[folder] = []
+        folder_index[folder].append(img_path)
 
     # Update cache — store effective dates too so get_leaf_folders can reuse them
     _image_cache['images'] = images
@@ -253,22 +369,32 @@ def get_all_images() -> List[str]:
     _image_cache['timestamp'] = time.time()
     _image_cache['folder_mtimes'] = folder_mtimes
     _image_cache['date_source'] = date_source
+    _image_cache['folder_index'] = folder_index
+
+    # Persist any newly discovered EXIF dates to disk so the next server restart
+    # (or cache TTL expiry) doesn't have to re-open unchanged files with Pillow.
+    _save_exif_date_cache()
 
     return images
 
 
 def get_images_by_folder(folder_path: str) -> List[str]:
-    """Get list of images from a specific folder.
-    
+    """Get images from a specific folder using the pre-built folder index.
+
+    The folder index is constructed during get_all_images() and maps each
+    directory path to its images in the same sorted order as the main feed.
+    This replaces a linear O(n) scan of all images with an O(1) dict lookup.
+
     Args:
-        folder_path: Path to the folder to filter by
-        
+        folder_path: Absolute path to the folder to filter by.
+
     Returns:
-        List of image file paths in that folder
+        List of image file paths in that folder, sorted newest-first.
     """
-    images = get_all_images()
-    filtered_images = [img for img in images if os.path.dirname(img) == folder_path]
-    return filtered_images
+    # Ensure the cache (and folder index) is populated
+    get_all_images()
+    folder_index: Dict[str, List[str]] = _image_cache.get('folder_index', {})
+    return list(folder_index.get(folder_path, []))
 
 
 def get_leaf_folders() -> List[Dict[str, Any]]:
@@ -341,3 +467,10 @@ def get_leaf_folders() -> List[Dict[str, Any]]:
     _leaf_folders_cache = folders
 
     return folders
+
+
+# ---------------------------------------------------------------------------
+# Module initialisation — load persistent EXIF cache from disk so it is
+# available immediately on the first scan after a server restart.
+# ---------------------------------------------------------------------------
+_load_exif_date_cache()

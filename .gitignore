@@ -6,6 +6,9 @@ seen.json
 profiles.json
 profiles/
 .thumbnails
+
+# Generated performance caches (rebuilt automatically on first scan)
+.exif_date_cache.json
 .archive-ignore
 Guides
 Plans

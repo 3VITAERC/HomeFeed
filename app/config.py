@@ -19,6 +19,9 @@ SEEN_FILE = os.path.join(BASE_DIR, 'seen.json')
 PROFILES_FILE = os.path.join(BASE_DIR, 'profiles.json')
 PROFILES_DIR = os.path.join(BASE_DIR, 'profiles')
 
+# Persistent EXIF date cache (survives server restarts, keyed by path:mtime:size)
+EXIF_DATE_CACHE_FILE = os.path.join(BASE_DIR, '.exif_date_cache.json')
+
 # Supported file formats
 SUPPORTED_FORMATS: Set[str] = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.m4v', '.mp4', '.mov'}
 VIDEO_FORMATS: Set[str] = {'.m4v', '.mp4', '.mov', '.webm'}
