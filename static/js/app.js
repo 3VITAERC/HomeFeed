@@ -51,6 +51,9 @@ let searchDebounceTimer = null;
 // Auto-advance timer
 let autoAdvanceTimer = null;
 
+// Debounce timer for comment badge refresh (prevents API flood when fast-scrolling)
+let commentBadgeTimer = null;
+
 // Loading overlay failsafe timeout
 let loadingFailsafeTimeout = null;
 
@@ -86,8 +89,12 @@ function _onSlideActivated(newIndex) {
     const currentSrc = state.images[newIndex];
     if (currentSrc) {
         markCurrentImageSeen(currentSrc);
-        // Refresh comment badge for this image (non-blocking)
-        refreshCommentBadge(currentSrc).catch(() => {});
+        // Refresh comment badge — debounced so rapid scrolling doesn't flood the API
+        if (commentBadgeTimer) clearTimeout(commentBadgeTimer);
+        const srcForBadge = currentSrc;
+        commentBadgeTimer = setTimeout(() => {
+            refreshCommentBadge(srcForBadge).catch(() => {});
+        }, 600);
     }
 }
 

@@ -516,6 +516,9 @@ def get_comments_for_path(image_path: str) -> List[Dict[str, Any]]:
 def add_comment(image_path: str, comment: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Add a comment to an image and persist it.
 
+    The entire read-modify-write cycle is protected by FileLock to prevent
+    concurrent requests from clobbering each other's data.
+
     Args:
         image_path: Absolute path to the image file.
         comment: Comment dict (caller must supply id, text, type, etc.)
@@ -523,12 +526,15 @@ def add_comment(image_path: str, comment: Dict[str, Any]) -> List[Dict[str, Any]
     Returns:
         Updated list of comments for this image.
     """
-    data = load_comments()
-    if image_path not in data:
-        data[image_path] = []
-    data[image_path].append(comment)
-    save_comments(data)
-    return data[image_path]
+    lock = FileLock(COMMENTS_FILE + '.lock')
+    with lock:
+        data = _load_json_file(COMMENTS_FILE, {})
+        if image_path not in data:
+            data[image_path] = []
+        data[image_path].append(comment)
+        with open(COMMENTS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        return data[image_path]
 
 
 def update_comment(image_path: str, comment_id: str, new_text: str) -> Optional[Dict[str, Any]]:
@@ -542,14 +548,17 @@ def update_comment(image_path: str, comment_id: str, new_text: str) -> Optional[
     Returns:
         Updated comment dict, or None if not found.
     """
-    data = load_comments()
-    comments = data.get(image_path, [])
-    for comment in comments:
-        if comment.get('id') == comment_id and comment.get('type') == 'user':
-            comment['text'] = new_text
-            comment['edited_at'] = time.time()
-            save_comments(data)
-            return comment
+    lock = FileLock(COMMENTS_FILE + '.lock')
+    with lock:
+        data = _load_json_file(COMMENTS_FILE, {})
+        comments = data.get(image_path, [])
+        for comment in comments:
+            if comment.get('id') == comment_id and comment.get('type') == 'user':
+                comment['text'] = new_text
+                comment['edited_at'] = time.time()
+                with open(COMMENTS_FILE, 'w') as f:
+                    json.dump(data, f, indent=2)
+                return comment
     return None
 
 
@@ -563,13 +572,37 @@ def delete_comment(image_path: str, comment_id: str) -> bool:
     Returns:
         True if deleted, False if not found.
     """
-    data = load_comments()
-    comments = data.get(image_path, [])
-    new_comments = [c for c in comments if c.get('id') != comment_id]
-    if len(new_comments) == len(comments):
-        return False
-    data[image_path] = new_comments
-    if not data[image_path]:
-        del data[image_path]
-    save_comments(data)
-    return True
+    lock = FileLock(COMMENTS_FILE + '.lock')
+    with lock:
+        data = _load_json_file(COMMENTS_FILE, {})
+        comments = data.get(image_path, [])
+        new_comments = [c for c in comments if c.get('id') != comment_id]
+        if len(new_comments) == len(comments):
+            return False
+        data[image_path] = new_comments
+        if not data[image_path]:
+            del data[image_path]
+        with open(COMMENTS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
+
+
+def cleanup_orphaned_comments() -> int:
+    """Remove comments for image files that no longer exist on disk.
+
+    Called at startup and after library scans to prevent unbounded growth
+    of comments.json.
+
+    Returns:
+        Number of image entries removed.
+    """
+    lock = FileLock(COMMENTS_FILE + '.lock')
+    with lock:
+        data = _load_json_file(COMMENTS_FILE, {})
+        before = len(data)
+        data = {path: comments for path, comments in data.items() if os.path.exists(path)}
+        after = len(data)
+        if before != after:
+            with open(COMMENTS_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+    return before - after

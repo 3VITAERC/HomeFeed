@@ -184,18 +184,25 @@ export function exitMode(mode) {
 export function isAnyModalOpen() {
     const modals = [
         'settingsModal',
-        'infoModal', 
+        'infoModal',
         'foldersModal',
         'jumpModal',
         'shortcutsModal',
         'trashModal',
         'deleteConfirmModal'
     ];
-    
-    return modals.some(id => {
+
+    const standardModalOpen = modals.some(id => {
         const modal = document.getElementById(id);
         return modal && modal.style.display !== 'none' && modal.style.display !== '';
     });
+    if (standardModalOpen) return true;
+
+    // Comments panel uses a CSS class (.open) rather than display style
+    const commentsPanel = document.getElementById('commentsPanel');
+    if (commentsPanel && commentsPanel.classList.contains('open')) return true;
+
+    return false;
 }
 
 export default {

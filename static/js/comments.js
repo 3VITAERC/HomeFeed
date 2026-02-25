@@ -81,6 +81,52 @@ export function initComments() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && isOpen) closeComments();
     });
+
+    // Swipe-to-dismiss: drag the handle/header area down to close
+    _setupSwipeToDismiss(panel);
+}
+
+/**
+ * Attach a swipe-down-to-close gesture to the panel.
+ * Only triggers when the user starts dragging in the top 48px (handle + header).
+ * The panel follows the finger for tactile feedback, then snaps closed or back.
+ */
+function _setupSwipeToDismiss(el) {
+    let startY = 0;
+    let currentY = 0;
+    let dragging = false;
+
+    el.addEventListener('touchstart', (e) => {
+        const rect = el.getBoundingClientRect();
+        const touchY = e.touches[0].clientY;
+        if (touchY - rect.top > 52) return; // only handle + header zone
+        startY = touchY;
+        currentY = touchY;
+        dragging = true;
+        el.style.transition = 'none';
+    }, { passive: true });
+
+    el.addEventListener('touchmove', (e) => {
+        if (!dragging) return;
+        currentY = e.touches[0].clientY;
+        const dy = Math.max(0, currentY - startY);
+        el.style.transform = el.classList.contains('open')
+            ? `translateY(${dy}px)`
+            : '';
+    }, { passive: true });
+
+    el.addEventListener('touchend', () => {
+        if (!dragging) return;
+        dragging = false;
+        el.style.transition = '';
+        const dy = currentY - startY;
+        if (dy > 80) {
+            el.style.transform = '';
+            closeComments();
+        } else {
+            el.style.transform = ''; // snap back
+        }
+    });
 }
 
 // ─── Open / Close ────────────────────────────────────────────────────────────

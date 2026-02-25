@@ -203,12 +203,16 @@ def post_comment():
             profile_id = get_current_profile_id()
             if profile_id:
                 from app.services.profiles import load_profiles
-                profiles = load_profiles()
-                profile = next((p for p in profiles if p.get('id') == profile_id), None)
+                profiles_data = load_profiles()
+                profile = next(
+                    (p for p in profiles_data.get('profiles', []) if p.get('id') == profile_id),
+                    None
+                )
                 if profile:
                     profile_name = profile.get('name') or profile.get('emoji') or None
-    except Exception:
-        pass
+    except Exception as e:
+        import sys
+        print(f'Warning: Failed to load profile context for comment: {e}', file=sys.stderr)
 
     comment = {
         'id': str(uuid.uuid4()),
@@ -306,6 +310,11 @@ def update_sidecar():
         return jsonify({'error': 'Access denied'}), 403
 
     sidecar = _sidecar_path(image_path)
+
+    # Require either the image file or the existing sidecar to exist —
+    # prevents creating arbitrary .txt files in allowed directories.
+    if not os.path.exists(image_path) and not os.path.exists(sidecar):
+        return jsonify({'error': 'Image file does not exist'}), 404
 
     try:
         with open(sidecar, 'w', encoding='utf-8') as f:
