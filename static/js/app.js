@@ -25,11 +25,14 @@ import {
 // Import API client
 import API from './api.js';
 
+// Import comments panel
+import { initComments, openComments, closeComments, isCommentsOpen, refreshCommentBadge } from './comments.js';
+
 // DOM Elements - initialized after DOM is ready
 let scrollContainer, noImages, noFavorites, noUnseen, jumpModal, jumpInput, jumpTotal;
 let jumpCancel, jumpGo, exitFilterBtn, noTrash, exitTrashBtn, exitUnseenBtn;
 let loadingOverlay;
-let heartBtn, trashBtn, filterBtn, filterBadge, shuffleBtn, infoBtn, settingsBtn;
+let heartBtn, trashBtn, commentsBtn, shuffleBtn, infoBtn, settingsBtn;
 let noImagesSettingsBtn;
 let trashModal, trashModalClose, trashCountInfo, viewTrashBtn, emptyTrashBtn;
 let deleteConfirmModal, deleteConfirmMessage, deleteCancelBtn, deleteConfirmBtn;
@@ -83,6 +86,8 @@ function _onSlideActivated(newIndex) {
     const currentSrc = state.images[newIndex];
     if (currentSrc) {
         markCurrentImageSeen(currentSrc);
+        // Refresh comment badge for this image (non-blocking)
+        refreshCommentBadge(currentSrc).catch(() => {});
     }
 }
 
@@ -121,6 +126,9 @@ async function init() {
     // Initialize top nav (delayed)
     initTopNav();
 
+    // Initialize comments panel
+    initComments();
+
     // Set up seen flush on page unload
     setupSeenFlushOnUnload();
 }
@@ -149,8 +157,7 @@ function initDOMElements() {
     // Action Bar
     heartBtn = document.getElementById('heartBtn');
     trashBtn = document.getElementById('trashBtn');
-    filterBtn = document.getElementById('filterBtn');
-    filterBadge = document.getElementById('filterBadge');
+    commentsBtn = document.getElementById('commentsBtn');
     shuffleBtn = document.getElementById('shuffleBtn');
     infoBtn = document.getElementById('infoBtn');
     settingsBtn = document.getElementById('settingsBtn');
@@ -205,7 +212,7 @@ function setupEventListeners() {
     // Action bar buttons
     if (heartBtn) heartBtn.addEventListener('click', toggleFavorite);
     if (trashBtn) trashBtn.addEventListener('click', toggleTrash);
-    if (filterBtn) filterBtn.addEventListener('click', toggleFavoritesMode);
+    if (commentsBtn) commentsBtn.addEventListener('click', openCurrentComments);
     if (shuffleBtn) shuffleBtn.addEventListener('click', toggleShuffle);
     if (infoBtn) infoBtn.addEventListener('click', showInfoModal);
     if (settingsBtn) settingsBtn.addEventListener('click', showSettingsModal);
@@ -1407,14 +1414,20 @@ function updateTrashButton() {
 }
 
 /**
- * Update filter badge count
+ * Update filter badge count (no-op: the filter/bookmark button was replaced by comments)
  */
 function updateFilterBadge() {
-    if (!filterBadge) return;
-    
-    const count = state.favorites.size;
-    filterBadge.textContent = count;
-    filterBadge.style.display = count > 0 ? 'flex' : 'none';
+    // filterBadge no longer exists — the bookmark button was replaced by the comments button
+}
+
+/**
+ * Open the comments panel for the currently visible image.
+ */
+function openCurrentComments() {
+    const currentSrc = state.images[state.currentIndex];
+    if (currentSrc) {
+        openComments(currentSrc);
+    }
 }
 
 /**
@@ -1659,13 +1672,6 @@ function showFavoriteBlockedFeedback() {
  * Toggle favorites mode
  */
 async function toggleFavoritesMode() {
-    // Trigger animation
-    if (filterBtn) {
-        filterBtn.classList.remove('animate-press');
-        void filterBtn.offsetWidth; // Force reflow
-        filterBtn.classList.add('animate-press');
-    }
-    
     if (state.showingFavoritesOnly) {
         exitFavoritesMode();
         state.currentTopNavFolder = 'all';
@@ -1673,12 +1679,7 @@ async function toggleFavoritesMode() {
         await enterFavoritesMode();
         state.currentTopNavFolder = 'likes';
     }
-    
-    // Update filter button active state
-    if (filterBtn) {
-        filterBtn.classList.toggle('active', state.showingFavoritesOnly);
-    }
-    
+
     updateTopNavActiveState();
 }
 
@@ -3232,6 +3233,12 @@ function showHeartAnimation(slide, x, y) {
 // ============ Keyboard Handling ============
 
 function handleKeyboard(e) {
+    // Close comments panel on Escape (before other modal checks)
+    if (e.key === 'Escape' && isCommentsOpen()) {
+        closeComments();
+        return;
+    }
+
     // Check if modal is open
     if (isAnyModalOpen()) {
         if (e.key === 'Escape') {

@@ -11,6 +11,7 @@ from app.routes.cache import cache_bp
 from app.routes.pages import pages_bp
 from app.routes.auth import auth_bp
 from app.routes.seen import seen_bp
+from app.routes.comments import comments_bp
 
 __all__ = [
     'images_bp',
@@ -21,4 +22,5 @@ __all__ = [
     'pages_bp',
     'auth_bp',
     'seen_bp',
+    'comments_bp',
 ]

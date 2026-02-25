@@ -14,6 +14,7 @@ FAVORITES_FILE = os.path.join(BASE_DIR, 'favorites.json')
 TRASH_FILE = os.path.join(BASE_DIR, 'trash.json')
 THUMBNAIL_DIR = os.path.join(BASE_DIR, '.thumbnails')
 SEEN_FILE = os.path.join(BASE_DIR, 'seen.json')
+COMMENTS_FILE = os.path.join(BASE_DIR, 'comments.json')
 
 # Profiles
 PROFILES_FILE = os.path.join(BASE_DIR, 'profiles.json')

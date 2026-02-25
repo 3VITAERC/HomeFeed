@@ -15,6 +15,7 @@ from app.config import (
     FAVORITES_FILE,
     TRASH_FILE,
     SEEN_FILE,
+    COMMENTS_FILE,
     DEFAULT_OPTIMIZATIONS,
 )
 
@@ -467,3 +468,108 @@ def get_active_seen_stats(total_image_count: int) -> Dict[str, Any]:
 def reset_active_seen() -> None:
     """Reset seen history for the current profile (or global)."""
     save_active_seen({'seen': {}, 'total_scrolls': 0})
+
+
+# ---------------------------------------------------------------------------
+# Comments
+# Comments are global (not per-profile) — they annotate the files themselves.
+# When profiles are active, comments optionally record the profile name so
+# multiple users can be identified. Structure:
+#
+# comments.json = {
+#   "/abs/path/to/photo.jpg": [
+#     {
+#       "id": "uuid-string",
+#       "text": "comment body",
+#       "type": "user",          # "user" | "reddit"
+#       "profile_id": null,      # profile id when profiles are on
+#       "profile_name": null,    # display name / username
+#       "author": null,          # for reddit type: reddit username
+#       "score": null,           # for reddit type: upvote count
+#       "created_at": 1234567890.0,
+#       "edited_at": null
+#     }
+#   ]
+# }
+# ---------------------------------------------------------------------------
+
+def load_comments() -> Dict[str, List[Dict[str, Any]]]:
+    """Load all comments from comments.json.
+
+    Returns:
+        Dict mapping absolute image paths to lists of comment dicts.
+    """
+    return _load_json_file(COMMENTS_FILE, {})
+
+
+def save_comments(data: Dict[str, List[Dict[str, Any]]]) -> None:
+    """Save all comments to comments.json."""
+    _save_json_file(COMMENTS_FILE, data)
+
+
+def get_comments_for_path(image_path: str) -> List[Dict[str, Any]]:
+    """Get all stored user/reddit comments for a specific image path."""
+    data = load_comments()
+    return data.get(image_path, [])
+
+
+def add_comment(image_path: str, comment: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Add a comment to an image and persist it.
+
+    Args:
+        image_path: Absolute path to the image file.
+        comment: Comment dict (caller must supply id, text, type, etc.)
+
+    Returns:
+        Updated list of comments for this image.
+    """
+    data = load_comments()
+    if image_path not in data:
+        data[image_path] = []
+    data[image_path].append(comment)
+    save_comments(data)
+    return data[image_path]
+
+
+def update_comment(image_path: str, comment_id: str, new_text: str) -> Optional[Dict[str, Any]]:
+    """Update the text of an existing user comment.
+
+    Args:
+        image_path: Absolute path to the image file.
+        comment_id: UUID of the comment to update.
+        new_text: New comment text.
+
+    Returns:
+        Updated comment dict, or None if not found.
+    """
+    data = load_comments()
+    comments = data.get(image_path, [])
+    for comment in comments:
+        if comment.get('id') == comment_id and comment.get('type') == 'user':
+            comment['text'] = new_text
+            comment['edited_at'] = time.time()
+            save_comments(data)
+            return comment
+    return None
+
+
+def delete_comment(image_path: str, comment_id: str) -> bool:
+    """Delete a comment by id.
+
+    Args:
+        image_path: Absolute path to the image file.
+        comment_id: UUID of the comment to delete.
+
+    Returns:
+        True if deleted, False if not found.
+    """
+    data = load_comments()
+    comments = data.get(image_path, [])
+    new_comments = [c for c in comments if c.get('id') != comment_id]
+    if len(new_comments) == len(comments):
+        return False
+    data[image_path] = new_comments
+    if not data[image_path]:
+        del data[image_path]
+    save_comments(data)
+    return True

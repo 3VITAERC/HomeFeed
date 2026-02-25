@@ -15,7 +15,7 @@ def _ensure_config_files_exist():
     This allows users to skip the manual setup step of copying example files.
     Files are created with sensible defaults on first launch.
     """
-    from app.config import CONFIG_FILE, FAVORITES_FILE, TRASH_FILE, SEEN_FILE, DEFAULT_OPTIMIZATIONS, PROFILES_DIR, PROFILES_FILE
+    from app.config import CONFIG_FILE, FAVORITES_FILE, TRASH_FILE, SEEN_FILE, COMMENTS_FILE, DEFAULT_OPTIMIZATIONS, PROFILES_DIR, PROFILES_FILE
 
     defaults = {
         CONFIG_FILE: {
@@ -27,6 +27,7 @@ def _ensure_config_files_exist():
         TRASH_FILE: {'trash': []},
         SEEN_FILE: {'seen': {}, 'total_scrolls': 0},
         PROFILES_FILE: {'profiles': []},
+        COMMENTS_FILE: {},
     }
 
     for filepath, default_content in defaults.items():
@@ -86,6 +87,7 @@ def create_app(config=None):
     from app.routes.auth import auth_bp
     from app.routes.seen import seen_bp
     from app.routes.profiles import profiles_bp
+    from app.routes.comments import comments_bp
 
     app.register_blueprint(images_bp)
     app.register_blueprint(folders_bp)
@@ -96,6 +98,7 @@ def create_app(config=None):
     app.register_blueprint(auth_bp)
     app.register_blueprint(seen_bp)
     app.register_blueprint(profiles_bp)
+    app.register_blueprint(comments_bp)
 
     # Add authentication and profile checks before each request
     from app.services import is_auth_enabled, is_authenticated

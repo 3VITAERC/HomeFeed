@@ -359,6 +359,81 @@ export async function resetSeen() {
     return del('/api/seen', {});
 }
 
+// ============ Comments API ============
+
+/**
+ * Get all comments for an image (user comments + sidecar text + reddit data).
+ *
+ * @param {string} imagePath - Image URL (e.g. '/image?path=...')
+ * @returns {Promise<{comments: Array, sidecar: string|null, has_sidecar: boolean}>}
+ */
+export async function getComments(imagePath) {
+    return get(`/api/comments?path=${encodeURIComponent(imagePath)}`);
+}
+
+/**
+ * Post a new user comment on an image.
+ *
+ * @param {string} imagePath - Image URL
+ * @param {string} text - Comment text
+ * @returns {Promise<{success: boolean, comment: object}>}
+ */
+export async function postComment(imagePath, text) {
+    return post('/api/comments', { path: imagePath, text });
+}
+
+/**
+ * Edit an existing user comment.
+ *
+ * @param {string} imagePath - Image URL
+ * @param {string} commentId - UUID of the comment
+ * @param {string} text - New comment text
+ * @returns {Promise<{success: boolean, comment: object}>}
+ */
+export async function editComment(imagePath, commentId, text) {
+    const response = await fetch(`/api/comments/${encodeURIComponent(commentId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: imagePath, text }),
+    });
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    return response.json();
+}
+
+/**
+ * Delete a user comment.
+ *
+ * @param {string} imagePath - Image URL
+ * @param {string} commentId - UUID of the comment
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function deleteComment(imagePath, commentId) {
+    const response = await fetch(`/api/comments/${encodeURIComponent(commentId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: imagePath }),
+    });
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    return response.json();
+}
+
+/**
+ * Update the .txt sidecar file for an image.
+ *
+ * @param {string} imagePath - Image URL
+ * @param {string} text - New sidecar content
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function updateSidecar(imagePath, text) {
+    const response = await fetch('/api/comments/sidecar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: imagePath, text }),
+    });
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    return response.json();
+}
+
 // Default export with all API functions
 export default {
     // Images
@@ -396,4 +471,10 @@ export default {
     getUnseenImages,
     getSeenStats,
     resetSeen,
+    // Comments
+    getComments,
+    postComment,
+    editComment,
+    deleteComment,
+    updateSidecar,
 };
