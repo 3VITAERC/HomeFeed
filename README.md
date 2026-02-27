@@ -14,6 +14,7 @@ A TikTok-style vertical scrolling image viewer for your local photos. Scroll thr
 - **Jump to photo** - Quickly navigate to any photo by number
 - **Favorites** - Double-tap to favorite, filter to view only favorites
 - **Trash/Mark for Deletion** - Mark photos for deletion via menu, review and batch delete
+- **Comments** - Annotate any photo with personal notes; Reddit-style sidecar text files also shown when present
 - **New Feed (Watch History)** - Dedicated "New" tab shows only photos you haven't scrolled past yet; tracks progress in Settings
 - **Performance optimized** - HTTP caching, image list caching, and video posters.
 - **Auto-Advance Mode** - Auto-scroll when video ends or after a configurable delay for photos
@@ -76,7 +77,7 @@ You'll see output like:
 ==================================================
 ```
 
-> **Note:** Configuration files (`config.json`, `favorites.json`, `trash.json`, `seen.json`) are created automatically on first launch and are gitignored.
+> **Note:** Configuration files (`config.json`, `favorites.json`, `trash.json`, `seen.json`, `comments.json`) are created automatically on first launch and are gitignored.
 
 ### 3. Add Your Folders
 
@@ -232,6 +233,7 @@ curl -b cookies.txt -c cookies.txt -X POST http://localhost:7123/login \
 - **Single tap (videos)** - Mute/unmute video
 - **Heart icon** - Toggle favorite for current image (can unlike)
 - **Trash icon** - Toggle mark for deletion
+- **Comment icon** - Open comments panel to annotate the current photo
 - **Bookmark icon** - Filter to show only favorites
 - **"New" tab** - Switch to the New feed showing only photos you haven't seen yet
 - **Shuffle icon** - Toggle shuffle mode
@@ -250,6 +252,18 @@ The **New** feed automatically tracks which photos you've scrolled past and show
 - **Stats** — Open Settings → Library tab to see: how many photos you've seen, how many are new, total scrolls, and progress percentage
 - **Reset** — Tap "Reset Watch History" in Settings to clear all records and start fresh
 - **Empty state** — When you've seen everything, the New feed shows a "You're All Caught Up!" screen
+
+## Comments & Annotations
+
+Tap the **comment icon** on any photo to open the comments panel.
+
+- **Personal notes** — Write freeform notes on any photo. Notes are stored in `comments.json` (gitignored, never leaves your machine).
+- **Multi-line input** — Press **Shift+Enter** to add newlines; **Enter** alone sends.
+- **Edit & delete** — Tap the pencil or trash icon on any comment you wrote.
+- **Profile attribution** — If profiles are enabled, comments are tagged with the author's name/emoji.
+- **Reddit sidecar** — If a `.txt` file with the same name as the photo exists alongside it (common with reddit-saved content), its text is displayed as a read-only "source" comment. Admins can also edit the sidecar text in place.
+- **Count badge** — A red badge on the comment icon shows how many personal notes exist for the current photo.
+- **Swipe to close** — On mobile, swipe the panel downward from the handle to dismiss it.
 
 ## Keyboard Shortcuts
 
@@ -350,6 +364,7 @@ HomeFeed/
 ├── config.json            # Saved folder paths (gitignored, auto-generated)
 ├── favorites.json         # Saved favorites (gitignored, auto-generated)
 ├── trash.json             # Saved trash marks (gitignored, auto-generated)
+├── comments.json          # Photo comments/notes (gitignored, auto-generated)
 ├── profiles.json          # Profile list (gitignored, auto-generated)
 ├── profiles/              # Per-profile data directories (gitignored, auto-generated)
 │   └── <profile-id>/      # One directory per profile
@@ -365,12 +380,13 @@ HomeFeed/
 │   │   ├── folders.py     # Folder management
 │   │   ├── favorites.py   # Favorites API
 │   │   ├── trash.py       # Trash/mark-for-deletion API
+│   │   ├── comments.py    # Comments & sidecar API
 │   │   ├── cache.py       # Cache settings API
 │   │   ├── auth.py        # Authentication endpoints
 │   │   ├── profiles.py    # Profile picker + CRUD API
 │   │   └── pages.py       # HTML page routes
 │   └── services/          # Business logic services
-│       ├── data.py        # JSON data management
+│       ├── data.py        # JSON data management (incl. comments)
 │       ├── path_utils.py  # Path validation utilities
 │       ├── image_cache.py # Image list caching
 │       ├── auth.py        # Authentication service
@@ -384,6 +400,7 @@ HomeFeed/
         ├── app.js         # Main application entry
         ├── state.js       # Centralized state management
         ├── api.js         # API client
+        ├── comments.js    # Comments panel UI & logic
         └── utils/         # Utility modules
             ├── path.js    # Path utilities
             ├── gif.js     # GIF handling

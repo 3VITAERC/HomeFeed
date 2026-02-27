@@ -22,13 +22,14 @@ HomeFeed/
 │   │   ├── folders.py     # /api/folders, /api/folders/leaf
 │   │   ├── favorites.py   # /api/favorites/*
 │   │   ├── trash.py       # /api/trash/*
+│   │   ├── comments.py    # /api/comments, /api/comments/sidecar
 │   │   ├── cache.py       # /api/cache, /api/settings
 │   │   ├── auth.py        # /login, /logout, /api/auth/*
 │   │   ├── profiles.py    # /profiles, /api/profiles/*
 │   │   └── pages.py       # /, /settings, /scroll, /static
 │   └── services/
 │       ├── __init__.py    # Service exports
-│       ├── data.py        # Config, favorites, trash data management
+│       ├── data.py        # Config, favorites, trash, comments data management
 │       ├── path_utils.py  # Path validation and normalization
 │       ├── image_cache.py # Image list caching
 │       ├── auth.py        # Authentication service
@@ -43,6 +44,7 @@ HomeFeed/
 │       ├── app.js         # Main entry point
 │       ├── state.js       # Centralized state management
 │       ├── api.js         # API client
+│       ├── comments.js    # Comments panel: open/close, rendering, badge, sidecar edit
 │       └── utils/
 │           ├── path.js    # Path utilities
 │           ├── gif.js     # GIF freeze/unfreeze
@@ -50,6 +52,7 @@ HomeFeed/
 ├── config.json            # Saved folder paths (gitignored)
 ├── favorites.json         # Saved favorites (gitignored)
 ├── trash.json             # Saved trash marks (gitignored)
+├── comments.json          # Photo comments/notes (gitignored)
 ├── profiles.json          # Profile list (gitignored)
 ├── profiles/              # Per-profile data directories (gitignored)
 │   └── <profile-id>/      # Auto-created when a profile is created
@@ -85,7 +88,7 @@ PORT=9000 python server.py
 
 - **Backend:** Modular Flask application with blueprints for routes and services for business logic
 - **Frontend:** ES6 modules with vanilla JS, no build step required
-- **Data storage:** JSON files (config, favorites, trash) - no database
+- **Data storage:** JSON files (config, favorites, trash, comments) - no database
 - **Image serving:** Direct file serving with ETag caching (7-day max-age)
 - **Authentication:** Optional password protection via environment variable (`HOMEFEED_PASSWORD`)
 - **Profiles:** Optional Netflix-style user profiles; each profile has isolated favorites, watch history, and folder selection
@@ -278,6 +281,108 @@ else:
 
 ---
 
+## Comments & Sidecar System
+
+### Overview
+
+Users can annotate any photo with personal notes ("user comments"). Comments are stored globally in `comments.json` (keyed by absolute image path, gitignored). Additionally, `.txt` files co-located with an image ("sidecar files") are rendered as read-only source comments — common with Reddit-saved content.
+
+### Data Format (`comments.json`)
+
+```json
+{
+  "/abs/path/to/photo.jpg": [
+    {
+      "id": "uuid4",
+      "text": "This is my note",
+      "type": "user",
+      "author": "Alice",
+      "created_at": 1708560000.0,
+      "edited_at": null
+    }
+  ]
+}
+```
+
+- `type` is always `"user"` for written comments. Reddit sidecar entries have `type: "reddit"` and are synthesised at read time (never stored).
+- `author` is populated from the active profile's `name` or `emoji` if profiles are enabled; `null` otherwise.
+- The file grows as photos are annotated. Call `cleanup_orphaned_comments()` in `data.py` to prune entries for deleted files.
+
+### API Endpoints (`app/routes/comments.py`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/comments?path=<url>` | Get comments + sidecar for an image |
+| `POST` | `/api/comments` | Add a user comment; body: `{path, text}` |
+| `PUT` | `/api/comments/<id>` | Edit a user comment; body: `{path, text}` |
+| `DELETE` | `/api/comments/<id>?path=<url>` | Delete a user comment |
+| `PUT` | `/api/comments/sidecar` | Write/update the `.txt` sidecar; body: `{path, text}` |
+
+`GET /api/comments` response:
+```json
+{
+  "comments": [...],         // user comments + reddit entries merged (reddit first)
+  "sidecar": "text" | null,  // raw .txt content
+  "sidecar_path": "/abs/path.txt" | null,
+  "has_sidecar": true | false
+}
+```
+
+The sidecar PUT endpoint requires the image file **or** the existing `.txt` to already exist — it will not create files in arbitrary locations.
+
+### Reddit Sidecar Detection
+
+`_read_reddit_sidecar(image_path)` in `comments.py` looks for a `.txt` file with the same basename as the image. If found, it parses it into structured `type: "reddit"` comment dicts:
+
+- Each paragraph becomes a separate comment entry
+- Preserves Reddit markdown (`**bold**`, `*italic*`, `` `code` ``, links)
+- If the file starts with a URL line it is treated as the submission link
+
+### Frontend (`static/js/comments.js`)
+
+The panel is a bottom-sheet overlay (TikTok/Instagram style):
+
+```
+initComments()           — wire up all DOM refs and event listeners (call once at startup)
+openComments(imagePath)  — fetch and render comments, slide panel up
+closeComments()          — slide panel down, clean up
+isCommentsOpen()         — returns boolean
+refreshCommentBadge(url) — update the action-bar badge count without opening the panel
+```
+
+**Badge:** The red count badge on the comment button uses `display: flex` (not `block`) so `align-items: center` works correctly.
+
+**Keyboard integration:**
+- `state.js` `isAnyModalOpen()` detects the panel via `.open` CSS class — so all keyboard shortcuts (J/K/H/L etc.) are suppressed while the panel is open.
+- ESC is handled by an early check in `handleKeyboard` (before `isAnyModalOpen`) so it closes the panel without also triggering other modal-close logic.
+
+**Swipe to dismiss:** Touch-start on the top 52px (handle + header) begins a drag; releasing after 80px downward calls `closeComments()`.
+
+**Badge refresh debounce:** `refreshCommentBadge` is debounced by 600ms in `app.js` so rapid scrolling does not flood the API.
+
+**Sidecar inline editing:** The sidecar text block has an edit button (shown to all users for now; could be admin-gated in the future). Edits call `PUT /api/comments/sidecar`.
+
+### `data.py` Comment Functions
+
+```python
+get_comments_for_path(image_path)              # → list of comment dicts
+add_comment(image_path, comment_dict)          # → updated list; FileLock protected
+update_comment(image_path, comment_id, text)   # → updated comment or None; FileLock
+delete_comment(image_path, comment_id)         # → bool; FileLock
+cleanup_orphaned_comments()                    # → int (removed entries count)
+```
+
+All write functions acquire a `FileLock` around the full read-modify-write cycle to prevent concurrent-request data corruption.
+
+### Common Pitfalls
+
+- **`display: flex` on the badge** — JS must set `style.display = 'flex'` (not `'block'`) when showing the badge or the `align-items: center` centering is lost.
+- **`load_profiles()` returns a dict** — iterate `profiles_data.get('profiles', [])`, not `profiles_data` directly.
+- **Sidecar vs user comments are merged in GET, stored separately** — never write reddit-type entries to `comments.json`; they are always derived from the `.txt` file at request time.
+- **Comments are global (not per-profile)** — `comments.json` is not scoped to a profile. Comments written by one profile are visible to all.
+
+---
+
 ## Scrolling/Filtering Architecture
 
 This is the most complex part of the frontend and trips up AI agents frequently.
@@ -446,7 +551,7 @@ def serve_image():
 
 Business logic is extracted into service modules:
 
-- **`data.py`** - Loading/saving JSON files with thread-safe file locking
+- **`data.py`** - Loading/saving JSON files with thread-safe file locking; includes comment CRUD
 - **`path_utils.py`** - Path validation, normalization, security checks
 - **`image_cache.py`** - Image list caching with TTL
 - **`optimizations.py`** - Thumbnail generation, video poster extraction

@@ -443,7 +443,7 @@ async function handleSidecarSave() {
 function updateBadge(count) {
     if (!commentsBadge) return;
     if (count > 0) {
-        commentsBadge.style.display = 'block';
+        commentsBadge.style.display = 'flex';
         commentsBadge.textContent = count > 99 ? '99+' : String(count);
     } else {
         commentsBadge.style.display = 'none';
