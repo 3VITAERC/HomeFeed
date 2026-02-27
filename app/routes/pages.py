@@ -35,6 +35,23 @@ def scroll_view():
     return send_file(index_path)
 
 
+@pages_bp.route('/manifest.json')
+def manifest():
+    """Serve PWA web app manifest from root scope."""
+    return send_from_directory(os.path.join(PROJECT_ROOT, 'static'), 'manifest.json',
+                               mimetype='application/manifest+json')
+
+
+@pages_bp.route('/sw.js')
+def service_worker():
+    """Serve service worker from root so it controls the full app scope."""
+    response = send_from_directory(os.path.join(PROJECT_ROOT, 'static'), 'sw.js',
+                                   mimetype='application/javascript')
+    response.headers['Service-Worker-Allowed'] = '/'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+
 @pages_bp.route('/static/<path:filename>')
 def serve_static(filename):
     """Serve static files."""

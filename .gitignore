@@ -7,6 +7,7 @@ profiles.json
 profiles/
 comments.json
 .thumbnails
+assets
 
 # Generated performance caches (rebuilt automatically on first scan)
 .exif_date_cache.json
