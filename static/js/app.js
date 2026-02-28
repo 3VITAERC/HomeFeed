@@ -2469,7 +2469,6 @@ async function setupLogoutButton() {
     const logoutBtn = document.getElementById('settingsLogoutHeaderBtn');
 
     // ---- Profiles tab setup ----
-    const profilesTab = document.getElementById('settingsProfilesTab');
     const switchProfileBtn = document.getElementById('settingsSwitchProfileBtn');
     const manageProfilesBtn = document.getElementById('settingsManageProfilesBtn');
     const profileInfoRow = document.getElementById('profileInfoRow');
@@ -2489,9 +2488,6 @@ async function setupLogoutButton() {
 
         // Store admin status globally for use by other functions (e.g. showTrashModal)
         currentProfileIsAdmin = isAdmin;
-
-        // Always show Profiles tab so admins can enable profiles and create first profile
-        if (profilesTab) profilesTab.style.display = '';
 
         // Show profile-specific content if profiles exist or a profile is selected
         if (hasProfile || me.profiles_enabled) {
@@ -2594,7 +2590,10 @@ async function setupLogoutButton() {
             }
         }
     } catch (e) {
-        // Don't hide profiles tab on error; it's always shown now
+        console.error('Error setting up profiles tab:', e);
+        // Fallback: ensure admin always sees Manage Profiles row
+        if (profilesToggleRow) profilesToggleRow.style.display = '';
+        if (manageProfilesRow) manageProfilesRow.style.display = '';
     }
 
     // ---- Global auth logout button (now in Profiles tab row) ----
