@@ -35,38 +35,67 @@
             overflow-x: hidden;
         }
 
+        /* ---- Background glow ---- */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse 80% 50% at 50% 30%, rgba(254, 44, 85, 0.08) 0%, transparent 65%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
         /* ---- Header ---- */
         .page-header {
+            position: relative;
+            z-index: 1;
             text-align: center;
             padding: 60px 20px 40px;
         }
 
         .page-header h1 {
-            font-size: clamp(22px, 5vw, 36px);
-            font-weight: 400;
-            letter-spacing: 0.5px;
+            font-size: clamp(22px, 5vw, 32px);
+            font-weight: 600;
+            letter-spacing: -0.3px;
             color: var(--text-primary);
         }
 
         /* ---- Profile grid ---- */
         .profiles-grid {
+            position: relative;
+            z-index: 1;
             display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 24px;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
             padding: 0 20px 60px;
             max-width: 900px;
             margin: 0 auto;
+        }
+
+        @media (min-width: 500px) {
+            .profiles-grid {
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 24px;
+            }
         }
 
         .profile-card {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
             cursor: pointer;
             transition: transform 0.15s ease;
-            width: 120px;
+            width: 140px;
+        }
+
+        @media (max-width: 499px) {
+            .profile-card {
+                width: 200px;
+            }
         }
 
         .profile-card:hover {
@@ -80,23 +109,43 @@
         .profile-avatar {
             width: 96px;
             height: 96px;
-            border-radius: 8px;
+            border-radius: 50%;
             background: var(--bg-card);
-            border: 3px solid transparent;
+            border: 2.5px solid transparent;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 48px;
-            transition: border-color 0.15s ease;
+            font-size: 46px;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
             user-select: none;
         }
 
-        .profile-card:hover .profile-avatar {
-            border-color: var(--text-primary);
+        @media (max-width: 499px) {
+            .profile-avatar {
+                width: 120px;
+                height: 120px;
+                font-size: 58px;
+            }
         }
+
+        .profile-card:hover .profile-avatar {
+            border-color: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+        }
+
+        /* Per-profile gradient backgrounds */
+        .avatar-c0 { background: linear-gradient(145deg, #1f1520, #301828); }
+        .avatar-c1 { background: linear-gradient(145deg, #101a2e, #162340); }
+        .avatar-c2 { background: linear-gradient(145deg, #0f1e18, #142b22); }
+        .avatar-c3 { background: linear-gradient(145deg, #1e1810, #302510); }
+        .avatar-c4 { background: linear-gradient(145deg, #16101f, #231530); }
+        .avatar-c5 { background: linear-gradient(145deg, #1a1010, #2e1616); }
+        .avatar-c6 { background: linear-gradient(145deg, #0f1a1f, #12262e); }
+        .avatar-c7 { background: linear-gradient(145deg, #181a10, #25281a); }
 
         .profile-name {
             font-size: 14px;
+            font-weight: 500;
             color: var(--text-secondary);
             text-align: center;
             max-width: 100%;
@@ -158,6 +207,15 @@
             border-color: var(--text-primary);
         }
 
+        /* Always show edit pencil on touch devices (no hover available) */
+        @media (hover: none) {
+            .edit-pencil {
+                opacity: 1;
+                background: rgba(0, 0, 0, 0.75);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+        }
+
         /* ---- Add Profile card ---- */
         .add-profile-card {
             display: flex;
@@ -169,15 +227,16 @@
         }
 
         .add-profile-card .profile-avatar {
-            border: 2px dashed var(--border);
+            border: 2px dashed rgba(255, 255, 255, 0.2);
             background: transparent;
-            font-size: 36px;
+            font-size: 32px;
             color: var(--text-secondary);
         }
 
         .add-profile-card:hover .profile-avatar {
-            border-color: var(--text-secondary);
+            border-color: rgba(255, 255, 255, 0.5);
             color: var(--text-primary);
+            box-shadow: none;
         }
 
         .add-profile-card .profile-name {
@@ -190,6 +249,8 @@
 
         /* ---- Manage link ---- */
         .manage-link {
+            position: relative;
+            z-index: 1;
             text-align: center;
             padding-bottom: 40px;
         }
@@ -928,13 +989,15 @@
         function makeProfileCard(profile) {
             const card = document.createElement('div');
             card.className = 'profile-card';
+            // Assign a stable gradient color based on profile id
+            const colorIdx = (profile.id ? profile.id.toString().split('').reduce((a, c) => a + c.charCodeAt(0), 0) : profiles.indexOf(profile)) % 8;
             // Edit pencil only for logged-in admins
             const pencil = currentUserIsAdmin
                 ? `<button class="edit-pencil" title="Edit profile">✏️</button>`
                 : '';
             card.innerHTML = `
                 <div class="profile-avatar-wrap">
-                    <div class="profile-avatar">${profile.emoji}</div>
+                    <div class="profile-avatar avatar-c${colorIdx}">${profile.emoji}</div>
                     ${profile.has_password ? '<div class="lock-badge">🔒</div>' : ''}
                     ${pencil}
                 </div>

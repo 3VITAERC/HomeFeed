@@ -37,29 +37,53 @@
             padding: 20px;
         }
 
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(254, 44, 85, 0.12) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
         .login-container {
+            position: relative;
+            z-index: 1;
             width: 100%;
-            max-width: 400px;
-            background: var(--bg-card);
-            border-radius: 16px;
-            padding: 40px 30px;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+            max-width: 380px;
+            background: rgba(17, 17, 17, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 20px;
+            padding: 44px 32px 36px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(254, 44, 85, 0.1);
+            backdrop-filter: blur(12px);
         }
 
         .login-header {
             text-align: center;
-            margin-bottom: 32px;
+            margin-bottom: 36px;
+        }
+
+        .login-logo {
+            width: 72px;
+            height: 72px;
+            border-radius: 18px;
+            margin: 0 auto 20px;
+            display: block;
+            box-shadow: 0 4px 20px rgba(254, 44, 85, 0.35);
         }
 
         .login-header h1 {
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 700;
-            margin-bottom: 8px;
+            letter-spacing: -0.3px;
+            margin-bottom: 6px;
         }
 
         .login-header p {
             color: var(--text-secondary);
             font-size: 14px;
+            opacity: 0.8;
         }
 
         .login-form {
@@ -80,18 +104,20 @@
         }
 
         .form-group input {
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
             padding: 14px 16px;
             font-size: 16px;
             color: var(--text-primary);
             outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            width: 100%;
         }
 
         .form-group input:focus {
-            border-color: var(--accent);
+            border-color: rgba(254, 44, 85, 0.6);
+            box-shadow: 0 0 0 3px rgba(254, 44, 85, 0.12);
         }
 
         .form-group input::placeholder {
@@ -116,27 +142,33 @@
         .submit-btn {
             background: var(--accent);
             border: none;
-            border-radius: 8px;
-            padding: 14px 24px;
-            font-size: 16px;
+            border-radius: 12px;
+            padding: 15px 24px;
+            font-size: 15px;
             font-weight: 600;
             color: var(--text-primary);
             cursor: pointer;
-            transition: opacity 0.2s, transform 0.1s;
+            transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
             margin-top: 8px;
+            width: 100%;
+            letter-spacing: 0.1px;
+            box-shadow: 0 4px 16px rgba(254, 44, 85, 0.4);
         }
 
         .submit-btn:hover {
-            opacity: 0.9;
+            opacity: 0.92;
+            box-shadow: 0 6px 20px rgba(254, 44, 85, 0.5);
         }
 
         .submit-btn:active {
             transform: scale(0.98);
+            box-shadow: 0 2px 10px rgba(254, 44, 85, 0.3);
         }
 
         .submit-btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+            box-shadow: none;
         }
 
         .loading-spinner {
@@ -176,7 +208,8 @@
 <body>
     <div class="login-container">
         <div class="login-header">
-            <h1>🔐 HomeFeed</h1>
+            <img src="/static/icons/icon-180.png" alt="HomeFeed" class="login-logo">
+            <h1>HomeFeed</h1>
             <p>Enter your password to continue</p>
         </div>
 
