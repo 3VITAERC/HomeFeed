@@ -6,12 +6,6 @@
 
 A TikTok-style vertical scrolling image viewer for your local photos. Scroll through images, GIFs, m4vs, and MP4s with smooth snap scrolling. Quickly delete or like photos for easy pruning unwanted photos or reminising on old memories.
 
-<div align="center">
-
-![HomeFeed Logo](assets/512.png#gh-light-mode-only)
-![HomeFeed Logo](assets/512.png#gh-dark-mode-only)
-
-</div>
 
 ## Features
 

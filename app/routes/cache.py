@@ -52,11 +52,13 @@ def update_settings():
         config['shuffle'] = bool(data['shuffle'])
 
     # ---- Admin-only settings ----
-    # profiles_enabled toggle requires admin
+    # profiles_enabled: anyone can enable it (bootstrap/single-user mode has no admin boundary),
+    # but disabling it requires admin (prevents non-admins from locking everyone out).
     if 'profiles_enabled' in data:
-        if not is_admin:
+        enabling = bool(data['profiles_enabled'])
+        if not enabling and not is_admin:
             return jsonify({'error': 'Admin role required'}), 403
-        config['profiles_enabled'] = bool(data['profiles_enabled'])
+        config['profiles_enabled'] = enabling
 
     if 'optimizations' in data:
         # Only admins can change date_source and hdd_friendly (system-wide impact)

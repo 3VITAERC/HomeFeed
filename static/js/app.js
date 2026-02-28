@@ -2553,45 +2553,40 @@ async function setupLogoutButton() {
             }
         }
 
-        // Admin-only controls that are always visible (even if no profiles exist yet)
-        if (isAdmin) {
-            // Enable Profiles toggle
-            if (profilesToggleRow) profilesToggleRow.style.display = '';
-        }
+        // Enable Profiles toggle — always visible so anyone can set up profiles
+        if (profilesToggleRow) profilesToggleRow.style.display = '';
 
-        // Manage Profiles row - always visible to admins; visible to users when they have a profile
-        if (isAdmin || hasProfile) {
-            if (manageProfilesRow) {
-                manageProfilesRow.style.display = '';
-                if (manageProfilesBtn) {
-                    manageProfilesBtn.onclick = async () => {
-                        if (isAdmin && adminPasswordSet) {
-                            const pw = prompt('Enter server admin password to access Manage Profiles:');
-                            if (pw === null) return; // cancelled
-                            try {
-                                const res = await fetch('/api/profiles/verify-admin-password', {
-                                    method: 'POST',
-                                    headers: {'Content-Type': 'application/json'},
-                                    body: JSON.stringify({password: pw}),
-                                });
-                                const data = await res.json();
-                                if (!data.success) {
-                                    alert('Incorrect admin password.');
-                                    return;
-                                }
-                            } catch (e) {
-                                alert('Failed to verify password. Please try again.');
+        // Manage Profiles row — always visible so anyone can navigate to /profiles
+        if (manageProfilesRow) {
+            manageProfilesRow.style.display = '';
+            if (manageProfilesBtn) {
+                manageProfilesBtn.onclick = async () => {
+                    if (isAdmin && adminPasswordSet) {
+                        const pw = prompt('Enter server admin password to access Manage Profiles:');
+                        if (pw === null) return; // cancelled
+                        try {
+                            const res = await fetch('/api/profiles/verify-admin-password', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({password: pw}),
+                            });
+                            const data = await res.json();
+                            if (!data.success) {
+                                alert('Incorrect admin password.');
                                 return;
                             }
+                        } catch (e) {
+                            alert('Failed to verify password. Please try again.');
+                            return;
                         }
-                        window.location.href = '/profiles';
-                    };
-                }
+                    }
+                    window.location.href = '/profiles';
+                };
             }
         }
     } catch (e) {
         console.error('Error setting up profiles tab:', e);
-        // Fallback: ensure admin always sees Manage Profiles row
+        // Fallback: ensure both rows are always visible
         if (profilesToggleRow) profilesToggleRow.style.display = '';
         if (manageProfilesRow) manageProfilesRow.style.display = '';
     }

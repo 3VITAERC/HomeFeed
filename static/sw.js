@@ -3,7 +3,7 @@
  * Strategy: Cache-first for app shell (HTML/CSS/JS), network-only for images/API.
  */
 
-const CACHE_NAME = 'homefeed-shell-v1';
+const CACHE_NAME = 'homefeed-shell-v2';
 
 const SHELL_URLS = [
   '/',
@@ -62,7 +62,7 @@ self.addEventListener('fetch', (event) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
         // Cache successful GET responses for shell assets
-        if (response.ok && request.method === 'GET') {
+        if (response.status === 200 && request.method === 'GET') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }

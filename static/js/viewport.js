@@ -266,7 +266,7 @@ function _activateMedia(slide) {
             // Videos start muted for autoplay policy compliance.
             // Web Audio API will unmute for audio output when needed (see _attachAudioToActiveVideo).
             video.muted = true;
-            
+
             // Restore preload to 'auto' for active video so it buffers
             // (was set to 'none' when deactivated)
             video.preload = 'auto';
@@ -283,6 +283,11 @@ function _activateMedia(slide) {
             if (_audioEnabled && _audioContext) {
                 _attachAudioToActiveVideo();
             }
+        } else {
+            // Slide was cleared mid-download (_clearSlideContent). The intersection
+            // observer won't re-fire since the slide's DOM position is unchanged, so
+            // needsLoad will never dispatch on its own — trigger it manually here.
+            slide.dispatchEvent(new CustomEvent('needsLoad', { bubbles: true }));
         }
     }
 
