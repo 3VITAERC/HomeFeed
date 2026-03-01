@@ -2030,6 +2030,26 @@ html, body {
     font-weight: 500;
 }
 
+.folder-nickname-input {
+    width: 140px;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.folder-nickname-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.folder-nickname-input:focus {
+    border-color: var(--accent);
+}
+
 /* Group indicator in folders modal */
 .folders-group-indicator {
     color: var(--accent, #007AFF);

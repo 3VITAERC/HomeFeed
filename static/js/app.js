@@ -1836,7 +1836,7 @@ function applyFolderGrouping(leaves) {
     // Normalise root paths (strip trailing separator)
     const groupedRoots = [];
     for (const [rootPath, settings] of Object.entries(folderSettings)) {
-        if (settings && settings.grouping && settings.group_depth > 0) {
+        if (settings && settings.grouping && settings.group_depth >= 0) {
             const normRoot = rootPath.replace(/[\\/]+$/, '');
             groupedRoots.push({ root: normRoot, depth: settings.group_depth });
         }
@@ -2520,12 +2520,14 @@ function renderSettingsFolderList(folders) {
     listEl.innerHTML = folders.map(folder => {
         const fs = folderSettings[folder] || {};
         const groupingOn = fs.grouping || false;
-        const depth = fs.group_depth || 1;
+        const depth = fs.group_depth ?? 1;
+        const nickname = fs.nickname || '';
         const safe = escapeHtml(folder);
+        const safeNickname = escapeHtml(nickname);
 
         return `
         <div class="settings-folder-item" data-folder-path="${safe}">
-            <span class="settings-folder-path">${safe}</span>
+            <span class="settings-folder-path">${nickname ? safeNickname : safe}</span>
             <button class="settings-folder-edit" data-path="${safe}" title="Folder options">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -2535,6 +2537,10 @@ function renderSettingsFolderList(folders) {
             <button class="settings-folder-remove" data-path="${safe}">×</button>
         </div>
         <div class="settings-folder-options" data-for="${safe}" style="display: none;">
+            <div class="settings-folder-option-row">
+                <span class="settings-folder-option-label">Nickname</span>
+                <input type="text" class="folder-nickname-input" data-path="${safe}" value="${safeNickname}" placeholder="Display name" maxlength="30">
+            </div>
             <div class="settings-folder-option-row">
                 <span class="settings-folder-option-label">Folder Grouping</span>
                 <label class="settings-toggle">
@@ -2568,13 +2574,34 @@ function renderSettingsFolderList(folders) {
         });
     });
 
+    // Nickname input — save on blur or Enter
+    listEl.querySelectorAll('.folder-nickname-input').forEach(input => {
+        const save = async () => {
+            const path = input.dataset.path;
+            const current = folderSettings[path] || {};
+            const val = input.value.trim();
+            current.nickname = val || undefined;
+            if (!val) delete current.nickname;
+            folderSettings[path] = current;
+            // Update the display path text in the folder list
+            const item = listEl.querySelector(`.settings-folder-item[data-folder-path="${CSS.escape(path)}"]`);
+            if (item) {
+                const pathSpan = item.querySelector('.settings-folder-path');
+                if (pathSpan) pathSpan.textContent = val || path;
+            }
+            try { await API.saveFolderSetting(path, current); } catch (err) { console.error(err); }
+        };
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+    });
+
     // Grouping toggle
     listEl.querySelectorAll('.folder-grouping-toggle').forEach(toggle => {
         toggle.addEventListener('change', async () => {
             const path = toggle.dataset.path;
             const current = folderSettings[path] || {};
             current.grouping = toggle.checked;
-            if (!current.group_depth) current.group_depth = 1;
+            if (current.group_depth == null) current.group_depth = 1;
             folderSettings[path] = current;
             // Show/hide depth stepper
             const depthRow = listEl.querySelector(`.settings-folder-depth-row[data-path="${CSS.escape(path)}"]`);
@@ -2592,7 +2619,7 @@ function renderSettingsFolderList(folders) {
         btn.addEventListener('click', async () => {
             const path = btn.dataset.path;
             const current = folderSettings[path] || { grouping: true, group_depth: 1 };
-            if (current.group_depth > 1) {
+            if (current.group_depth > 0) {
                 current.group_depth -= 1;
                 folderSettings[path] = current;
                 const valueEl = listEl.querySelector(`.depth-value[data-path="${CSS.escape(path)}"]`);
@@ -2982,10 +3009,12 @@ function renderFoldersModalList(searchQuery = '') {
     let filteredFolders = groupedFolders;
     if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        filteredFolders = groupedFolders.filter(folder =>
-            folder.name.toLowerCase().includes(query) ||
-            folder.path.toLowerCase().includes(query)
-        );
+        filteredFolders = groupedFolders.filter(folder => {
+            const nickname = folderSettings[folder.path]?.nickname;
+            return folder.name.toLowerCase().includes(query) ||
+                folder.path.toLowerCase().includes(query) ||
+                (nickname && nickname.toLowerCase().includes(query));
+        });
     }
 
     const sortedFolders = sortFolders(filteredFolders, currentFolderSort);
@@ -3069,13 +3098,15 @@ function renderFoldersModalList(searchQuery = '') {
                </svg>`;
 
         const safePath = escapeHtml(folder.path);
-        const safeName = escapeHtml(folder.name);
+        const nickname = folderSettings[folder.path]?.nickname;
+        const displayName = nickname || folder.name;
+        const safeDisplayName = escapeHtml(displayName);
 
         return `
             <div class="folders-modal-item${isActive ? ' active' : ''}${groupClass}" data-folder-path="${safePath}" data-is-group="${isGroup}">
                 <div class="folders-modal-item-icon">${iconSvg}</div>
                 <div class="folders-modal-item-info">
-                    <div class="folders-modal-item-name">${safeName}${isGroup ? ' <span class="folders-group-indicator">›</span>' : ''}</div>
+                    <div class="folders-modal-item-name">${safeDisplayName}${isGroup ? ' <span class="folders-group-indicator">›</span>' : ''}</div>
                     <div class="folders-modal-item-path">${safePath}</div>
                 </div>
                 <div class="folders-modal-item-count">${folder.count}</div>
@@ -3222,9 +3253,11 @@ function renderTopNavTabs() {
         tab.className = 'top-nav-tab';
         tab.dataset.folder = folder.path;
         tab.dataset.isGroup = folder.isGroup ? 'true' : 'false';
-        const displayName = folder.name.length > 15 ? folder.name.substring(0, 15) + '…' : folder.name;
+        const nickname = folderSettings[folder.path]?.nickname;
+        const name = nickname || folder.name;
+        const displayName = name.length > 15 ? name.substring(0, 15) + '…' : name;
         tab.textContent = displayName;
-        tab.title = folder.name;
+        tab.title = name;
         tab.addEventListener('click', () => selectTopNavFolder(folder.path, folder.isGroup));
         topNavTabs.appendChild(tab);
     });
