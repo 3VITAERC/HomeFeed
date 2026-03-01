@@ -28,6 +28,11 @@ import API from './api.js';
 // Import comments panel
 import { initComments, openComments, closeComments, isCommentsOpen, refreshCommentBadge } from './comments.js';
 
+/** Escape a string for safe interpolation into HTML attributes and text content. */
+function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // DOM Elements - initialized after DOM is ready
 let scrollContainer, noImages, noFavorites, noUnseen, jumpModal, jumpInput, jumpTotal;
 let jumpCancel, jumpGo, exitFilterBtn, noTrash, exitTrashBtn, exitUnseenBtn;
@@ -1949,6 +1954,7 @@ async function enterFolderMode(folderPath) {
     state.unshuffledImages = []; // Clear shuffle backup for new context
     state.showingFolderOnly = true;
     state.currentFolderFilter = folderPath;
+    state.currentFolderFilterIsSubtree = false;
     state.currentTopNavFolder = folderPath;
     
     try {
@@ -2406,13 +2412,13 @@ async function loadSettingsModalData() {
         if (cacheSizeEl) cacheSizeEl.textContent = cacheInfo.size_formatted || '0 B';
         
         // Load optimization settings and update toggle states
-        const settings = await API.getSettings();
+        const appSettings = await API.getSettings();
         
         // Re-sync live state from authoritative backend — handles divergence from failed saves
-        if (settings.optimizations) {
-            state.optimizations = { ...state.optimizations, ...settings.optimizations };
+        if (appSettings.optimizations) {
+            state.optimizations = { ...state.optimizations, ...appSettings.optimizations };
         }
-        
+
         const thumbnailToggle = document.getElementById('toggleThumbnailCache');
         const videoPosterToggle = document.getElementById('toggleVideoPoster');
         const fillScreenToggle = document.getElementById('toggleFillScreen');
@@ -2425,22 +2431,22 @@ async function loadSettingsModalData() {
         const dateSourceLabel = document.getElementById('dateSourceLabel');
         const hddFriendlyToggle = document.getElementById('toggleHDDFriendly');
 
-        if (thumbnailToggle) thumbnailToggle.checked = settings.optimizations?.thumbnail_cache || false;
-        if (videoPosterToggle) videoPosterToggle.checked = settings.optimizations?.video_poster_cache || false;
-        if (fillScreenToggle) fillScreenToggle.checked = settings.optimizations?.fill_screen || false;
-        if (autoAdvanceToggle) autoAdvanceToggle.checked = settings.optimizations?.auto_advance || false;
-        if (autoAdvanceDelaySlider) autoAdvanceDelaySlider.value = settings.optimizations?.auto_advance_delay ?? 3;
-        if (autoAdvanceDelayValue) autoAdvanceDelayValue.textContent = settings.optimizations?.auto_advance_delay ?? 3;
-        if (preloadDistanceSlider) preloadDistanceSlider.value = settings.optimizations?.preload_distance ?? 3;
-        if (preloadDistanceValue) preloadDistanceValue.textContent = settings.optimizations?.preload_distance ?? 3;
-        if (hddFriendlyToggle) hddFriendlyToggle.checked = settings.optimizations?.hdd_friendly || false;
+        if (thumbnailToggle) thumbnailToggle.checked = appSettings.optimizations?.thumbnail_cache || false;
+        if (videoPosterToggle) videoPosterToggle.checked = appSettings.optimizations?.video_poster_cache || false;
+        if (fillScreenToggle) fillScreenToggle.checked = appSettings.optimizations?.fill_screen || false;
+        if (autoAdvanceToggle) autoAdvanceToggle.checked = appSettings.optimizations?.auto_advance || false;
+        if (autoAdvanceDelaySlider) autoAdvanceDelaySlider.value = appSettings.optimizations?.auto_advance_delay ?? 3;
+        if (autoAdvanceDelayValue) autoAdvanceDelayValue.textContent = appSettings.optimizations?.auto_advance_delay ?? 3;
+        if (preloadDistanceSlider) preloadDistanceSlider.value = appSettings.optimizations?.preload_distance ?? 3;
+        if (preloadDistanceValue) preloadDistanceValue.textContent = appSettings.optimizations?.preload_distance ?? 3;
+        if (hddFriendlyToggle) hddFriendlyToggle.checked = appSettings.optimizations?.hdd_friendly || false;
         // date_source: 'ctime' → checkbox on, 'mtime' (default) → checkbox off
-        const useCtime = (settings.optimizations?.date_source ?? 'mtime') === 'ctime';
+        const useCtime = (appSettings.optimizations?.date_source ?? 'mtime') === 'ctime';
         if (dateSourceToggle) dateSourceToggle.checked = useCtime;
         if (dateSourceLabel) dateSourceLabel.textContent = useCtime ? 'Created Date' : 'Modified Date';
 
         const profilesToggle = document.getElementById('toggleProfiles');
-        if (profilesToggle) profilesToggle.checked = settings.profiles_enabled !== false;
+        if (profilesToggle) profilesToggle.checked = appSettings.profiles_enabled !== false;
 
         // Setup add folder form
         const addFolderForm = document.getElementById('settingsAddFolderForm');
@@ -2515,32 +2521,33 @@ function renderSettingsFolderList(folders) {
         const fs = folderSettings[folder] || {};
         const groupingOn = fs.grouping || false;
         const depth = fs.group_depth || 1;
+        const safe = escapeHtml(folder);
 
         return `
-        <div class="settings-folder-item" data-folder-path="${folder}">
-            <span class="settings-folder-path">${folder}</span>
-            <button class="settings-folder-edit" data-path="${folder}" title="Folder options">
+        <div class="settings-folder-item" data-folder-path="${safe}">
+            <span class="settings-folder-path">${safe}</span>
+            <button class="settings-folder-edit" data-path="${safe}" title="Folder options">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
             </button>
-            <button class="settings-folder-remove" data-path="${folder}">×</button>
+            <button class="settings-folder-remove" data-path="${safe}">×</button>
         </div>
-        <div class="settings-folder-options" data-for="${folder}" style="display: none;">
+        <div class="settings-folder-options" data-for="${safe}" style="display: none;">
             <div class="settings-folder-option-row">
                 <span class="settings-folder-option-label">Folder Grouping</span>
                 <label class="settings-toggle">
-                    <input type="checkbox" class="folder-grouping-toggle" data-path="${folder}" ${groupingOn ? 'checked' : ''}>
+                    <input type="checkbox" class="folder-grouping-toggle" data-path="${safe}" ${groupingOn ? 'checked' : ''}>
                     <span class="settings-toggle-slider"></span>
                 </label>
             </div>
-            <div class="settings-folder-depth-row" data-path="${folder}" style="display: ${groupingOn ? 'flex' : 'none'};">
+            <div class="settings-folder-depth-row" data-path="${safe}" style="display: ${groupingOn ? 'flex' : 'none'};">
                 <span class="settings-folder-option-label">Group Depth</span>
                 <div class="settings-folder-depth-stepper">
-                    <button class="depth-btn depth-minus" data-path="${folder}">−</button>
-                    <span class="depth-value" data-path="${folder}">${depth}</span>
-                    <button class="depth-btn depth-plus" data-path="${folder}">+</button>
+                    <button class="depth-btn depth-minus" data-path="${safe}">−</button>
+                    <span class="depth-value" data-path="${safe}">${depth}</span>
+                    <button class="depth-btn depth-plus" data-path="${safe}">+</button>
                 </div>
             </div>
         </div>
@@ -3061,12 +3068,15 @@ function renderFoldersModalList(searchQuery = '') {
                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                </svg>`;
 
+        const safePath = escapeHtml(folder.path);
+        const safeName = escapeHtml(folder.name);
+
         return `
-            <div class="folders-modal-item${isActive ? ' active' : ''}${groupClass}" data-folder-path="${folder.path}" data-is-group="${isGroup}">
+            <div class="folders-modal-item${isActive ? ' active' : ''}${groupClass}" data-folder-path="${safePath}" data-is-group="${isGroup}">
                 <div class="folders-modal-item-icon">${iconSvg}</div>
                 <div class="folders-modal-item-info">
-                    <div class="folders-modal-item-name">${folder.name}${isGroup ? ' <span class="folders-group-indicator">›</span>' : ''}</div>
-                    <div class="folders-modal-item-path">${folder.path}</div>
+                    <div class="folders-modal-item-name">${safeName}${isGroup ? ' <span class="folders-group-indicator">›</span>' : ''}</div>
+                    <div class="folders-modal-item-path">${safePath}</div>
                 </div>
                 <div class="folders-modal-item-count">${folder.count}</div>
             </div>
@@ -3124,6 +3134,11 @@ function renderFoldersModalList(searchQuery = '') {
             const folderPath = item.dataset.folderPath;
             const isGroup = item.dataset.isGroup === 'true';
             hideFoldersModal();
+
+            // Exit any active quick-access mode before entering folder mode
+            if (state.showingFavoritesOnly) exitFavoritesMode();
+            if (state.showingTrashOnly) exitTrashMode();
+            if (state.showingUnseenOnly) exitUnseenMode();
 
             // If clicking the already-active folder, scroll to first image
             if (state.currentFolderFilter === folderPath) {
@@ -3369,7 +3384,11 @@ async function reloadImages(sortOrder) {
                 state.images = await API.getFavoriteImages(sortOrder);
             }
         } else if (state.showingFolderOnly && state.currentFolderFilter) {
-            state.images = await API.getImagesByFolder(state.currentFolderFilter, sortOrder);
+            if (state.currentFolderFilterIsSubtree) {
+                state.images = await API.getImagesBySubtree(state.currentFolderFilter, sortOrder);
+            } else {
+                state.images = await API.getImagesByFolder(state.currentFolderFilter, sortOrder);
+            }
         } else {
             state.images = await API.getImages(sortOrder);
         }
@@ -3832,7 +3851,11 @@ async function softRefreshImages() {
         } else if (state.showingFavoritesOnly) {
             freshImages = await API.getFavoriteImages(state.currentSortOrder);
         } else if (state.showingFolderOnly && state.currentFolderFilter) {
-            freshImages = await API.getImagesByFolder(state.currentFolderFilter, state.currentSortOrder);
+            if (state.currentFolderFilterIsSubtree) {
+                freshImages = await API.getImagesBySubtree(state.currentFolderFilter, state.currentSortOrder);
+            } else {
+                freshImages = await API.getImagesByFolder(state.currentFolderFilter, state.currentSortOrder);
+            }
         } else {
             freshImages = await API.getImages(state.currentSortOrder);
         }
