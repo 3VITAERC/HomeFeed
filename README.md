@@ -13,6 +13,7 @@ A TikTok-style vertical scrolling image viewer for your local photos. Full-scree
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [iPhone + iCloud Setup](#iphone--icloud-setup-mac)
+- [Folder Organization](#folder-organization)
 - [Navigation](#navigation)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Performance Cache](#performance-cache)
@@ -31,6 +32,7 @@ A TikTok-style vertical scrolling image viewer for your local photos. Full-scree
 - **New Feed** — Dedicated tab showing only photos you haven't scrolled past yet
 - **Comments** — Annotate any photo with personal notes; Sidecar `.txt` files shown automatically. Shift+Enter for newlines, swipe down to close on mobile.
 - **Folder Browser** — Jump between folders; shows leaf folders with image counts and live search
+- **Folder Organization** — Customize how folders are displayed with nicknames and optional grouping/collapsing
 - **Shuffle Mode** — Randomize photo order each session
 - **Auto-Advance** — Auto-scroll when a video ends or after a configurable delay
 - **Pull-to-Refresh** — Drag the top nav to refresh without losing your place
@@ -70,6 +72,28 @@ Open the URL in your browser, go to Settings, and add folder paths like `/Users/
 > Both `/` and `\` path formats are accepted on all platforms.
 
 > Config files (`config.json`, `favorites.json`, `trash.json`, `seen.json`, `comments.json`) are created automatically and gitignored.
+
+---
+
+## Folder Organization
+
+Customize how folders appear in the Folder Browser, top navigation, and folder modal.
+
+**Open Folder Options:** Go to **Settings → Folders**, then click the **pencil icon** next to any folder.
+
+| Setting | Effect |
+|---------|--------|
+| **Nickname** | Display custom name instead of the folder path. Shows in the Folder Browser modal and top nav tabs. Limited to 30 characters. |
+| **Folder Grouping** | Enable to collapse subfolders into groups. Useful for large photo libraries. |
+| **Group Depth** | When grouping is on, sets how many subfolder levels to show before collapsing. `0` = show only the root folder (all subfolders collapsed into one). `1+` = show that many levels of subfolders. Range: 0–8. Default: off. |
+
+**Examples:**
+
+- **iPhone iCloud originals:** Add `/Users/name/Pictures/Photos Library.photoslibrary/originals`, set nickname to "iPhone", enable grouping with depth 2 (shows Year → Month). Jump to a specific month instantly.
+- **Photo archive:** Add `/mnt/archive/photos`, set nickname to "Archive", grouping depth 0 (hide all subfolders, show only the archive root).
+- **Family shared folder:** Add `/Volumes/Photos`, set nickname to "Family Photos", no grouping (browse each folder individually).
+
+> **Note:** Folder settings (nickname, grouping) apply globally, not per profile. Grouping describes physical folder structure, not access control.
 
 ---
 

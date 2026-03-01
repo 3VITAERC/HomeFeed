@@ -281,6 +281,96 @@ else:
 
 ---
 
+## Folder Organization
+
+### Overview
+
+Folder organization allows users to customize how folders appear in the UI via **nicknames** and **grouping**. These settings are stored globally (not per-profile) in `config.json` under the `folder_settings` key, since they describe physical filesystem navigation rather than user access control.
+
+### Settings Structure (`folder_settings` in `config.json`)
+
+```json
+{
+  "folder_settings": {
+    "/absolute/path/to/root": {
+      "grouping": true,
+      "group_depth": 1,
+      "nickname": "Display Name"
+    }
+  }
+}
+```
+
+- **`grouping`** (boolean): Enable folder collapsing/grouping. Default: `false` (off).
+- **`group_depth`** (0–8): How many subfolder levels to display before collapsing. `0` = collapse all subfolders into the root. Default: 1. Only used when `grouping: true`.
+- **`nickname`** (string): Custom display name for the folder. Shown in Folder Browser modal, top nav tabs, and search. Max 30 chars. Optional; if not set, shows the computed folder name.
+
+### Frontend Workflow
+
+#### **applyFolderGrouping(leaves)**
+Located in `/static/js/app.js`, this function processes the leaf folder list and groups them based on settings:
+
+1. **Iterate through leaves:** For each leaf folder path, check if it belongs to any configured grouping root.
+2. **Compute group path:** If a match is found, take the first `group_depth` subdirectory levels from the root. For `depth: 0`, the group path equals the root.
+3. **Accumulate counts:** Merge image counts and modification times for all leaves under a group.
+4. **Create group entry:** Convert grouped data into folder objects with `isGroup: true`.
+5. **Return mixed list:** Ungrouped leaves pass through unchanged; grouped entries are added to the result.
+
+**Example:**
+- Root: `/photos`, `group_depth: 1`
+- Leaves: `/photos/2024/Jan/01`, `/photos/2024/Jan/02`, `/photos/2024/Feb/01`
+- Groups: `/photos/2024/Jan` (count: 2), `/photos/2024/Feb` (count: 1)
+
+#### **Display Name Resolution**
+Used in folders modal and top nav tabs:
+```javascript
+const nickname = folderSettings[folder.path]?.nickname;
+const displayName = nickname || folder.name;
+```
+Applies to both grouped entries and leaf folders. Nicknames take precedence over computed names.
+
+#### **Settings Modal (renderSettingsFolderList)**
+In `/static/js/app.js` lines 2520–2660:
+- Renders folder list from `folderSettings` state
+- Pencil icon toggles inline options panel
+- **Nickname input:** Text field (max 30 chars), saved on blur or Enter
+- **Grouping toggle:** Enable/disable grouping, shows/hides depth stepper
+- **Depth stepper:** ± buttons to adjust 0–8 (min is 0, max is 8)
+
+**Edge cases handled:**
+- Using `??` (nullish coalescing) instead of `||` to allow `group_depth: 0`
+- Using `== null` check in toggle handler so 0 is not treated as falsy
+
+#### **Folder Deletion Cleanup**
+When a folder is deleted via Settings:
+1. **Frontend:** Call `API.removeFolder(path)` → DELETE `/api/folders`
+2. **Backend:** Remove folder from list + call `remove_folder_setting(path)` to clean up orphaned settings
+3. **Frontend cache:** Delete `folderSettings[path]` and re-render top nav via `initTopNav()`
+
+### Backend API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/folders/settings` | Get all folder settings; returns `folder_settings` dict from config |
+| `PATCH` | `/api/folders/settings` | Update settings for one folder; body: `{path, settings}` |
+| `DELETE` | `/api/folders` | Remove a folder; also calls `remove_folder_setting()` to clean up its settings |
+
+### Data Service Functions (`app/services/data.py`)
+
+- **`get_folder_settings()`:** Returns `config.get('folder_settings', {})` — the full dict of per-folder settings
+- **`save_folder_setting(path, settings)`:** Merges `settings` into `folder_settings[path]` and saves config
+- **`remove_folder_setting(path)`:** Deletes `folder_settings[path]` when a folder is removed
+
+### Common Pitfalls
+
+- **Grouping is global, not per-profile** — all users see the same grouping; only folder selection (`folders` list) is per-profile
+- **Nicknames don't override folder selection** — if a folder is not in the `folders` list, it won't appear regardless of nickname settings
+- **Orphaned settings:** If a folder is deleted without calling `remove_folder_setting()`, its settings persist in config (use the API to delete folders, don't edit `config.json` manually)
+- **Exact path matching:** Nicknames and grouping are keyed by absolute path string; `/photos` and `/photos/` are treated as different entries
+- **Depth 0 edge cases:** Be careful with `|| 0` checks; use `?? 0` or `== null` instead to allow `group_depth: 0`
+
+---
+
 ## Comments & Sidecar System
 
 ### Overview
