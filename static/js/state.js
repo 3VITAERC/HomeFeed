@@ -55,7 +55,8 @@ export const state = {
     showingFolderOnly: false,
     showingUnseenOnly: false,
     currentFolderFilter: null,
-    
+    currentFolderFilterIsSubtree: false, // true when viewing a grouped folder (subtree mode)
+
     // Seen tracking
     seenPendingBuffer: [],   // Accumulates image URLs to be flushed to /api/seen/batch
     seenFlushTimer: null,    // setInterval handle for periodic flush
@@ -110,6 +111,7 @@ export function resetState() {
     state.showingFolderOnly = false;
     state.showingUnseenOnly = false;
     state.currentFolderFilter = null;
+    state.currentFolderFilterIsSubtree = false;
     state.seenPendingBuffer = [];
     state.seenFlushTimer = null;
     state.seenStats = { seen_count: 0, total_count: 0, total_scrolls: 0, percent_seen: 0 };
@@ -165,6 +167,7 @@ export function exitMode(mode) {
     } else if (mode === 'folder') {
         state.showingFolderOnly = false;
         state.currentFolderFilter = null;
+        state.currentFolderFilterIsSubtree = false;
         // Check if also in favorites mode
         if (state.showingFavoritesOnly) {
             // Stay in favorites mode

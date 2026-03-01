@@ -19,7 +19,7 @@ from app.services.profiles import (
     get_current_folders,
     is_current_profile_admin,
 )
-from app.services.data import load_config, save_config
+from app.services.data import load_config, save_config, get_folder_settings, save_folder_setting
 
 
 folders_bp = Blueprint('folders', __name__)
@@ -80,6 +80,29 @@ def get_leaf_folders_route():
     """
     folders = get_leaf_folders()
     return jsonify(folders)
+
+
+@folders_bp.route('/api/folders/settings', methods=['GET'])
+def get_folder_settings_route():
+    """Get per-folder display settings (grouping config)."""
+    return jsonify(get_folder_settings())
+
+
+@folders_bp.route('/api/folders/settings', methods=['PATCH'])
+def update_folder_settings_route():
+    """Update display settings for a single root folder.
+
+    Expects JSON body: { "path": "/abs/path", "settings": { "grouping": true, "group_depth": 1 } }
+    """
+    data = request.get_json()
+    path = data.get('path', '').strip()
+    settings = data.get('settings')
+
+    if not path or settings is None:
+        return jsonify({'error': 'path and settings are required'}), 400
+
+    save_folder_setting(path, settings)
+    return jsonify({'success': True})
 
 
 @folders_bp.route('/api/folders', methods=['POST'])

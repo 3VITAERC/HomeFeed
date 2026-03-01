@@ -83,6 +83,43 @@ def get_images_by_folder_route():
     return jsonify(image_urls)
 
 
+@images_bp.route('/api/images/subtree', methods=['GET'])
+def get_images_by_subtree_route():
+    """Get images from all subfolders under a path prefix.
+
+    Used by the folder-grouping feature: when a grouped folder node is
+    clicked, the frontend asks for every image whose directory starts with
+    the group prefix.
+
+    Query params:
+        prefix: Path prefix (required)
+        sort:   'newest' (default) or 'oldest'
+    """
+    prefix = request.args.get('prefix')
+    sort_order = request.args.get('sort', 'newest')
+
+    if not prefix:
+        return jsonify({'error': 'prefix parameter required'}), 400
+
+    # URL-decode and normalize
+    prefix = normalize_path(unquote(prefix))
+
+    # Security: verify the prefix is within allowed folders
+    if not is_path_allowed(prefix):
+        return jsonify({'error': 'Access denied'}), 403
+
+    # Filter all images whose path starts with prefix + os.sep (or exactly prefix)
+    all_images = get_all_images()
+    prefix_with_sep = prefix + os.sep
+    filtered = [img for img in all_images if img.startswith(prefix_with_sep) or os.path.dirname(img) == prefix]
+
+    if sort_order == 'oldest':
+        filtered = filtered[::-1]
+
+    image_urls = [format_image_url(img) for img in filtered]
+    return jsonify(image_urls)
+
+
 @images_bp.route('/api/image-count', methods=['GET'])
 def get_image_count():
     """Get count of images and folders."""

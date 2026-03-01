@@ -39,6 +39,27 @@ async function post(endpoint, data) {
 }
 
 /**
+ * Make a PATCH request to the API
+ *
+ * @param {string} endpoint - API endpoint path
+ * @param {object} data - Request body data
+ * @returns {Promise<any>} Response data
+ */
+async function patch(endpoint, data) {
+    const response = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+    }
+    return response.json();
+}
+
+/**
  * Make a DELETE request to the API
  * 
  * @param {string} endpoint - API endpoint path
@@ -141,12 +162,47 @@ export async function addFolder(path) {
 
 /**
  * Remove a folder from configuration
- * 
+ *
  * @param {string} path - Folder path to remove
  * @returns {Promise<{success: boolean, folders: string[]}>}
  */
 export async function removeFolder(path) {
     return del('/api/folders', { path });
+}
+
+/**
+ * Get per-folder display settings (grouping config)
+ *
+ * @returns {Promise<Object>} Map of folder path to settings
+ */
+export async function getFolderSettings() {
+    return get('/api/folders/settings');
+}
+
+/**
+ * Save display settings for a single root folder
+ *
+ * @param {string} path - Root folder path
+ * @param {object} settings - Settings object (e.g. { grouping: true, group_depth: 1 })
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function saveFolderSetting(path, settings) {
+    return patch('/api/folders/settings', { path, settings });
+}
+
+/**
+ * Get images from all subfolders under a path prefix
+ *
+ * @param {string} prefix - Path prefix
+ * @param {string} sortOrder - Optional sort order ('newest', 'oldest')
+ * @returns {Promise<string[]>} Array of image URLs
+ */
+export async function getImagesBySubtree(prefix, sortOrder) {
+    const encodedPrefix = encodeURIComponent(prefix);
+    if (sortOrder) {
+        return get(`/api/images/subtree?prefix=${encodedPrefix}&sort=${sortOrder}`);
+    }
+    return get(`/api/images/subtree?prefix=${encodedPrefix}`);
 }
 
 // ============ Favorites API ============
@@ -446,6 +502,9 @@ export default {
     getLeafFolders,
     addFolder,
     removeFolder,
+    getFolderSettings,
+    saveFolderSetting,
+    getImagesBySubtree,
     // Favorites
     getFavorites,
     addFavorite,

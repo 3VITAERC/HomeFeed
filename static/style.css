@@ -1933,6 +1933,114 @@ html, body {
     background: rgba(255, 68, 68, 0.4);
 }
 
+/* Pencil / edit button in settings folder row */
+.settings-folder-edit {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-right: 6px;
+    transition: background 0.2s, color 0.2s;
+}
+
+.settings-folder-edit:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+}
+
+/* Inline options panel below each folder row */
+.settings-folder-options {
+    background: var(--bg-dark);
+    border-radius: 0 0 8px 8px;
+    margin-top: -8px;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-folder-option-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+}
+
+.settings-folder-option-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.settings-folder-depth-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0 2px;
+}
+
+.settings-folder-depth-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.depth-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.depth-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.depth-btn.depth-minus {
+    border-radius: 6px 0 0 6px;
+}
+
+.depth-btn.depth-plus {
+    border-radius: 0 6px 6px 0;
+}
+
+.depth-value {
+    width: 32px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Group indicator in folders modal */
+.folders-group-indicator {
+    color: var(--accent, #007AFF);
+    font-weight: bold;
+    margin-left: 4px;
+}
+
+.folders-modal-item-group .folders-modal-item-icon svg {
+    stroke: var(--accent, #007AFF);
+}
+
 .settings-empty-state {
     text-align: center;
     padding: 20px;

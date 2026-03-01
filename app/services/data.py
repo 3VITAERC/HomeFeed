@@ -130,6 +130,33 @@ def save_optimization_settings(settings: Dict[str, bool]) -> None:
     save_config(config)
 
 
+def get_folder_settings() -> Dict[str, Any]:
+    """Get per-folder display settings (e.g. grouping configuration).
+
+    Stored in the global config.json under ``folder_settings``.
+    Not per-profile — grouping describes how to navigate the physical
+    filesystem, not a per-user access control.
+
+    Returns:
+        Dict mapping root folder paths to their settings dicts.
+    """
+    return load_config().get('folder_settings', {})
+
+
+def save_folder_setting(path: str, settings: Dict[str, Any]) -> None:
+    """Save display settings for a single root folder.
+
+    Args:
+        path: Absolute path of the configured root folder.
+        settings: Settings dict (e.g. ``{"grouping": true, "group_depth": 1}``).
+    """
+    config = load_config()
+    fs = config.get('folder_settings', {})
+    fs[path] = settings
+    config['folder_settings'] = fs
+    save_config(config)
+
+
 def load_favorites() -> List[str]:
     """Load favorites from favorites.json.
     

@@ -48,6 +48,9 @@ let leafFolders = [];
 let currentFolderSort = 'count';
 let searchDebounceTimer = null;
 
+// Per-folder grouping settings: { "/path/to/root": { grouping: true, group_depth: 1 }, ... }
+let folderSettings = {};
+
 // Auto-advance timer
 let autoAdvanceTimer = null;
 
@@ -1813,6 +1816,131 @@ function shuffleArray(array) {
 // ============ Folder Mode ============
 
 /**
+ * Collapse leaf folders into grouped entries based on per-root grouping settings.
+ *
+ * For each configured root where grouping is enabled, leaves under that root
+ * are replaced with group entries at the configured depth.
+ *
+ * @param {Array<{path, name, count, newest_mtime}>} leaves - Raw leaf folders
+ * @returns {Array<{path, name, count, newest_mtime, isGroup?}>} - Mixed array of
+ *          ungrouped leaves and grouped entries
+ */
+function applyFolderGrouping(leaves) {
+    if (!folderSettings || Object.keys(folderSettings).length === 0) return leaves;
+
+    // Normalise root paths (strip trailing separator)
+    const groupedRoots = [];
+    for (const [rootPath, settings] of Object.entries(folderSettings)) {
+        if (settings && settings.grouping && settings.group_depth > 0) {
+            const normRoot = rootPath.replace(/[\\/]+$/, '');
+            groupedRoots.push({ root: normRoot, depth: settings.group_depth });
+        }
+    }
+
+    if (groupedRoots.length === 0) return leaves;
+
+    const result = [];
+    // Map: groupPath -> { count, newest_mtime }
+    const groups = new Map();
+
+    for (const leaf of leaves) {
+        let matched = false;
+
+        for (const { root, depth } of groupedRoots) {
+            // Check if this leaf is under the root
+            const sep = leaf.path.includes('/') ? '/' : '\\';
+            if (leaf.path === root || leaf.path.startsWith(root + sep)) {
+                matched = true;
+                // Compute the group path: root + depth levels
+                const remainder = leaf.path.substring(root.length);
+                const parts = remainder.split(/[\\/]/).filter(Boolean);
+                const groupParts = parts.slice(0, depth);
+                const groupPath = groupParts.length > 0
+                    ? root + sep + groupParts.join(sep)
+                    : root;
+
+                if (groups.has(groupPath)) {
+                    const g = groups.get(groupPath);
+                    g.count += leaf.count;
+                    g.newest_mtime = Math.max(g.newest_mtime, leaf.newest_mtime || 0);
+                } else {
+                    groups.set(groupPath, {
+                        count: leaf.count,
+                        newest_mtime: leaf.newest_mtime || 0,
+                    });
+                }
+                break; // A leaf belongs to at most one root
+            }
+        }
+
+        if (!matched) {
+            result.push(leaf); // Pass through ungrouped leaves unchanged
+        }
+    }
+
+    // Convert groups map to folder entries
+    for (const [groupPath, data] of groups) {
+        const sep = groupPath.includes('/') ? '/' : '\\';
+        const pathParts = groupPath.split(sep);
+        // Find which root this group belongs to, to determine display name
+        let displayName = pathParts[pathParts.length - 1];
+        for (const { root, depth } of groupedRoots) {
+            const normSep = root.includes('/') ? '/' : '\\';
+            if (groupPath === root || groupPath.startsWith(root + normSep)) {
+                const remainder = groupPath.substring(root.length);
+                const parts = remainder.split(/[\\/]/).filter(Boolean);
+                displayName = parts.join('/') || pathParts[pathParts.length - 1];
+                break;
+            }
+        }
+        result.push({
+            path: groupPath,
+            name: displayName,
+            count: data.count,
+            newest_mtime: data.newest_mtime,
+            isGroup: true,
+        });
+    }
+
+    return result;
+}
+
+/**
+ * Enter subtree folder mode — loads images from all subfolders under a prefix.
+ * Used when clicking a grouped folder entry.
+ *
+ * @param {string} prefix - The subtree prefix path
+ */
+async function enterSubtreeFolderMode(prefix) {
+    state.savedIndex = state.currentIndex;
+    state.savedImages = [...state.images];
+    state.unshuffledImages = [];
+    state.showingFolderOnly = true;
+    state.currentFolderFilter = prefix;
+    state.currentFolderFilterIsSubtree = true;
+    state.currentTopNavFolder = prefix;
+
+    try {
+        state.images = await API.getImagesBySubtree(prefix, state.currentSortOrder);
+
+        if (state.shuffleEnabled && state.images.length > 0) {
+            state.unshuffledImages = [...state.images];
+            shuffleArray(state.images);
+        }
+
+        state.currentIndex = 0;
+        showLoadingOverlay();
+        buildSlides(0);
+        prioritizeFirstImage();
+        updateUI();
+        updateTopNavActiveState();
+        scrollToImage(0, 'instant');
+    } catch (error) {
+        console.error('Failed to enter subtree folder mode:', error);
+    }
+}
+
+/**
  * Enter folder mode
  */
 async function enterFolderMode(folderPath) {
@@ -1853,6 +1981,7 @@ async function enterFolderMode(folderPath) {
 function exitFolderMode() {
     state.showingFolderOnly = false;
     state.currentFolderFilter = null;
+    state.currentFolderFilterIsSubtree = false;
     state.currentTopNavFolder = 'all';
     state.unshuffledImages = []; // Clear shuffle backup
     state.images = [...state.savedImages];
@@ -2256,10 +2385,14 @@ function setupSettingsTabs() {
  */
 async function loadSettingsModalData() {
     try {
-        // Load folders
-        const folders = await API.getFolders();
+        // Load folders and folder settings in parallel
+        const [folders, settings] = await Promise.all([
+            API.getFolders(),
+            API.getFolderSettings(),
+        ]);
+        folderSettings = settings || {};
         renderSettingsFolderList(folders);
-        
+
         // Load stats
         const counts = await API.getImageCount();
         const folderCountEl = document.getElementById('settingsFolderCount');
@@ -2372,20 +2505,111 @@ async function loadSettingsModalData() {
 function renderSettingsFolderList(folders) {
     const listEl = document.getElementById('settingsFolderList');
     if (!listEl) return;
-    
+
     if (!folders || folders.length === 0) {
         listEl.innerHTML = '<div class="settings-empty-state"><p>No folders added yet</p></div>';
         return;
     }
-    
-    listEl.innerHTML = folders.map(folder => `
-        <div class="settings-folder-item">
+
+    listEl.innerHTML = folders.map(folder => {
+        const fs = folderSettings[folder] || {};
+        const groupingOn = fs.grouping || false;
+        const depth = fs.group_depth || 1;
+
+        return `
+        <div class="settings-folder-item" data-folder-path="${folder}">
             <span class="settings-folder-path">${folder}</span>
+            <button class="settings-folder-edit" data-path="${folder}" title="Folder options">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+            </button>
             <button class="settings-folder-remove" data-path="${folder}">×</button>
         </div>
-    `).join('');
-    
-    // Add remove handlers
+        <div class="settings-folder-options" data-for="${folder}" style="display: none;">
+            <div class="settings-folder-option-row">
+                <span class="settings-folder-option-label">Folder Grouping</span>
+                <label class="settings-toggle">
+                    <input type="checkbox" class="folder-grouping-toggle" data-path="${folder}" ${groupingOn ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                </label>
+            </div>
+            <div class="settings-folder-depth-row" data-path="${folder}" style="display: ${groupingOn ? 'flex' : 'none'};">
+                <span class="settings-folder-option-label">Group Depth</span>
+                <div class="settings-folder-depth-stepper">
+                    <button class="depth-btn depth-minus" data-path="${folder}">−</button>
+                    <span class="depth-value" data-path="${folder}">${depth}</span>
+                    <button class="depth-btn depth-plus" data-path="${folder}">+</button>
+                </div>
+            </div>
+        </div>
+        `;
+    }).join('');
+
+    // Pencil button — toggle inline options panel (only one open at a time)
+    listEl.querySelectorAll('.settings-folder-edit').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const path = btn.dataset.path;
+            const panel = listEl.querySelector(`.settings-folder-options[data-for="${CSS.escape(path)}"]`);
+            if (!panel) return;
+            const isOpen = panel.style.display !== 'none';
+            // Close all panels first
+            listEl.querySelectorAll('.settings-folder-options').forEach(p => p.style.display = 'none');
+            if (!isOpen) panel.style.display = 'block';
+        });
+    });
+
+    // Grouping toggle
+    listEl.querySelectorAll('.folder-grouping-toggle').forEach(toggle => {
+        toggle.addEventListener('change', async () => {
+            const path = toggle.dataset.path;
+            const current = folderSettings[path] || {};
+            current.grouping = toggle.checked;
+            if (!current.group_depth) current.group_depth = 1;
+            folderSettings[path] = current;
+            // Show/hide depth stepper
+            const depthRow = listEl.querySelector(`.settings-folder-depth-row[data-path="${CSS.escape(path)}"]`);
+            if (depthRow) depthRow.style.display = toggle.checked ? 'flex' : 'none';
+            try {
+                await API.saveFolderSetting(path, current);
+            } catch (err) {
+                console.error('Failed to save folder setting:', err);
+            }
+        });
+    });
+
+    // Depth stepper buttons
+    listEl.querySelectorAll('.depth-minus').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const path = btn.dataset.path;
+            const current = folderSettings[path] || { grouping: true, group_depth: 1 };
+            if (current.group_depth > 1) {
+                current.group_depth -= 1;
+                folderSettings[path] = current;
+                const valueEl = listEl.querySelector(`.depth-value[data-path="${CSS.escape(path)}"]`);
+                if (valueEl) valueEl.textContent = current.group_depth;
+                try { await API.saveFolderSetting(path, current); } catch (err) { console.error(err); }
+            }
+        });
+    });
+
+    listEl.querySelectorAll('.depth-plus').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const path = btn.dataset.path;
+            const current = folderSettings[path] || { grouping: true, group_depth: 1 };
+            if (current.group_depth < 8) {
+                current.group_depth += 1;
+                folderSettings[path] = current;
+                const valueEl = listEl.querySelector(`.depth-value[data-path="${CSS.escape(path)}"]`);
+                if (valueEl) valueEl.textContent = current.group_depth;
+                try { await API.saveFolderSetting(path, current); } catch (err) { console.error(err); }
+            }
+        });
+    });
+
+    // Remove handlers
     listEl.querySelectorAll('.settings-folder-remove').forEach(btn => {
         btn.addEventListener('click', async () => {
             try {
@@ -2705,8 +2929,12 @@ async function loadFoldersModalData() {
     foldersList.innerHTML = '<div class="info-loading">Loading folders...</div>';
     
     try {
-        const folders = await API.getLeafFolders();
-        
+        const [folders, settings] = await Promise.all([
+            API.getLeafFolders(),
+            API.getFolderSettings(),
+        ]);
+        folderSettings = settings || {};
+
         if (!folders || folders.length === 0) {
             foldersList.innerHTML = `
                 <div class="folders-modal-empty">
@@ -2720,7 +2948,7 @@ async function loadFoldersModalData() {
             });
             return;
         }
-        
+
         leafFolders = folders;
         renderFoldersModalList();
         
@@ -2741,15 +2969,18 @@ function renderFoldersModalList(searchQuery = '') {
     const trashCount = state.trash.size;
     const unseenCount = Math.max(0, state.seenStats.total_count - state.seenStats.seen_count);
     
-    let filteredFolders = leafFolders;
+    // Apply grouping first, then filter
+    const groupedFolders = applyFolderGrouping(leafFolders);
+
+    let filteredFolders = groupedFolders;
     if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        filteredFolders = leafFolders.filter(folder =>
+        filteredFolders = groupedFolders.filter(folder =>
             folder.name.toLowerCase().includes(query) ||
             folder.path.toLowerCase().includes(query)
         );
     }
-    
+
     const sortedFolders = sortFolders(filteredFolders, currentFolderSort);
     
     // Build quick access row with All, New (Unseen), Likes, and Trash
@@ -2817,16 +3048,24 @@ function renderFoldersModalList(searchQuery = '') {
     // Build folder items
     const folderItemsHtml = sortedFolders.map(folder => {
         const isActive = activeFolder === folder.path;
-        
+        const isGroup = folder.isGroup || false;
+        const groupClass = isGroup ? ' folders-modal-item-group' : '';
+
+        // Group icon: stacked folders; leaf icon: single folder
+        const iconSvg = isGroup
+            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                   <path d="M2 10h20" opacity="0.3"></path>
+               </svg>`
+            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+               </svg>`;
+
         return `
-            <div class="folders-modal-item${isActive ? ' active' : ''}" data-folder-path="${folder.path}">
-                <div class="folders-modal-item-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                    </svg>
-                </div>
+            <div class="folders-modal-item${isActive ? ' active' : ''}${groupClass}" data-folder-path="${folder.path}" data-is-group="${isGroup}">
+                <div class="folders-modal-item-icon">${iconSvg}</div>
                 <div class="folders-modal-item-info">
-                    <div class="folders-modal-item-name">${folder.name}</div>
+                    <div class="folders-modal-item-name">${folder.name}${isGroup ? ' <span class="folders-group-indicator">›</span>' : ''}</div>
                     <div class="folders-modal-item-path">${folder.path}</div>
                 </div>
                 <div class="folders-modal-item-count">${folder.count}</div>
@@ -2883,11 +3122,14 @@ function renderFoldersModalList(searchQuery = '') {
     document.querySelectorAll('.folders-modal-item').forEach(item => {
         item.addEventListener('click', () => {
             const folderPath = item.dataset.folderPath;
+            const isGroup = item.dataset.isGroup === 'true';
             hideFoldersModal();
-            
+
             // If clicking the already-active folder, scroll to first image
             if (state.currentFolderFilter === folderPath) {
                 scrollToImage(0, 'instant');
+            } else if (isGroup) {
+                enterSubtreeFolderMode(folderPath);
             } else {
                 enterFolderMode(folderPath);
             }
@@ -2918,7 +3160,11 @@ function sortFolders(folders, sortBy) {
 function initTopNav() {
     setTimeout(async () => {
         try {
-            const folders = await API.getLeafFolders();
+            const [folders, settings] = await Promise.all([
+                API.getLeafFolders(),
+                API.getFolderSettings(),
+            ]);
+            folderSettings = settings || {};
             folders.sort((a, b) => (a.newest_mtime || 0) - (b.newest_mtime || 0));
             state.topNavFolders = folders;
             state.topNavLoaded = true;
@@ -2951,15 +3197,20 @@ function renderTopNavTabs() {
     likesTab.addEventListener('click', () => selectTopNavFolder('likes'));
     topNavTabs.appendChild(likesTab);
     
-    // Add folder tabs
-    state.topNavFolders.forEach(folder => {
+    // Apply folder grouping, then add tabs
+    const displayFolders = applyFolderGrouping(state.topNavFolders);
+    // Re-sort grouped results by newest_mtime ascending (oldest left, newest right)
+    displayFolders.sort((a, b) => (a.newest_mtime || 0) - (b.newest_mtime || 0));
+
+    displayFolders.forEach(folder => {
         const tab = document.createElement('button');
         tab.className = 'top-nav-tab';
         tab.dataset.folder = folder.path;
+        tab.dataset.isGroup = folder.isGroup ? 'true' : 'false';
         const displayName = folder.name.length > 15 ? folder.name.substring(0, 15) + '…' : folder.name;
         tab.textContent = displayName;
         tab.title = folder.name;
-        tab.addEventListener('click', () => selectTopNavFolder(folder.path));
+        tab.addEventListener('click', () => selectTopNavFolder(folder.path, folder.isGroup));
         topNavTabs.appendChild(tab);
     });
     
@@ -2987,7 +3238,7 @@ function renderTopNavTabs() {
     });
 }
 
-async function selectTopNavFolder(folderPath) {
+async function selectTopNavFolder(folderPath, isGroup) {
     if (folderPath === 'all') {
         if (state.showingFolderOnly) exitFolderMode();
         if (state.showingFavoritesOnly) exitFavoritesMode();
@@ -3015,12 +3266,17 @@ async function selectTopNavFolder(folderPath) {
     } else {
         if (state.showingFavoritesOnly) exitFavoritesMode();
         if (state.showingTrashOnly) exitTrashMode();
+        if (state.showingUnseenOnly) exitUnseenMode();
         if (state.currentFolderFilter !== folderPath) {
-            await enterFolderMode(folderPath);
+            if (isGroup) {
+                await enterSubtreeFolderMode(folderPath);
+            } else {
+                await enterFolderMode(folderPath);
+            }
         }
         state.currentTopNavFolder = folderPath;
     }
-    
+
     updateTopNavActiveState();
 }
 
