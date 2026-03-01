@@ -2647,8 +2647,13 @@ function renderSettingsFolderList(folders) {
     listEl.querySelectorAll('.settings-folder-remove').forEach(btn => {
         btn.addEventListener('click', async () => {
             try {
-                await API.removeFolder(btn.dataset.path);
+                const removedPath = btn.dataset.path;
+                await API.removeFolder(removedPath);
+                // Clear orphaned settings from in-memory cache
+                delete folderSettings[removedPath];
                 loadSettingsModalData();
+                // Re-render top nav so stale nicknames/grouping disappear immediately
+                initTopNav();
             } catch (error) {
                 console.error('Failed to remove folder:', error);
             }

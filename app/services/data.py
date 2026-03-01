@@ -157,6 +157,20 @@ def save_folder_setting(path: str, settings: Dict[str, Any]) -> None:
     save_config(config)
 
 
+def remove_folder_setting(path: str) -> None:
+    """Remove display settings for a deleted folder.
+
+    Args:
+        path: Absolute path of the folder being removed.
+    """
+    config = load_config()
+    fs = config.get('folder_settings', {})
+    if path in fs:
+        del fs[path]
+        config['folder_settings'] = fs
+        save_config(config)
+
+
 def load_favorites() -> List[str]:
     """Load favorites from favorites.json.
     

@@ -19,7 +19,7 @@ from app.services.profiles import (
     get_current_folders,
     is_current_profile_admin,
 )
-from app.services.data import load_config, save_config, get_folder_settings, save_folder_setting
+from app.services.data import load_config, save_config, get_folder_settings, save_folder_setting, remove_folder_setting
 
 
 folders_bp = Blueprint('folders', __name__)
@@ -154,6 +154,7 @@ def remove_folder():
     if normalized in folders:
         folders.remove(normalized)
         save_fn(folders)
+        remove_folder_setting(normalized)
 
         # Invalidate cache since folders changed
         invalidate_cache()
