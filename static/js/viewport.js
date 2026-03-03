@@ -271,17 +271,27 @@ function _activateMedia(slide) {
             // (was set to 'none' when deactivated)
             video.preload = 'auto';
 
-            // Play the video (muted autoplay is always allowed)
-            video.play().catch((err) => {
-                console.log(`[Viewport] Video play blocked for slide ${slide.dataset.index}: ${err.message}`);
-            });
-
             // Track this as the active video for audio sync
             _activeVideo = video;
 
-            // If audio is enabled, attach audio to this video
-            if (_audioEnabled && _audioContext) {
-                _attachAudioToActiveVideo();
+            // Play the video (muted autoplay is always allowed).
+            // IMPORTANT: audio must be attached AFTER play() resolves, not before.
+            // If _attachAudioToActiveVideo() sets video.muted=false before the play
+            // promise settles, Chrome treats it as an unmuted autoplay attempt.
+            // Chrome's Media Engagement Index allows only a few unmuted autoplays
+            // before blocking — causing the 3rd+ video to freeze at 0:00.
+            // By waiting for play() to resolve first, the video is already playing
+            // (muted), and the subsequent unmute doesn't trigger a new policy check.
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    // Video is now playing (muted). Safe to attach Web Audio.
+                    if (_audioEnabled && _audioContext && _activeVideo === video) {
+                        _attachAudioToActiveVideo();
+                    }
+                }).catch((err) => {
+                    console.log(`[Viewport] Video play blocked for slide ${slide.dataset.index}: ${err.message}`);
+                });
             }
         } else {
             // Slide was cleared mid-download (_clearSlideContent). The intersection
