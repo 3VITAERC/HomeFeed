@@ -48,6 +48,11 @@ def add_favorite():
 
     # Extract actual file path from URL format if needed
     path = extract_path_from_url(path)
+    path = normalize_path(path)
+
+    # Security: only allow paths within configured folders
+    if not is_path_allowed(path):
+        return jsonify({'error': 'Access denied'}), 403
 
     favorites = load_active_favorites()
 
@@ -69,6 +74,11 @@ def remove_favorite():
 
     # Extract actual file path from URL format if needed
     path = extract_path_from_url(path)
+    path = normalize_path(path)
+
+    # Security: only allow paths within configured folders
+    if not is_path_allowed(path):
+        return jsonify({'error': 'Access denied'}), 403
 
     favorites = load_active_favorites()
 

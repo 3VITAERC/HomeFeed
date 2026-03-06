@@ -2275,11 +2275,11 @@ function showInfoModal() {
             <div class="settings-seen-header">Image Info</div>
             <div class="info-row">
                 <span class="info-label">Filename</span>
-                <span class="info-value">${filename}</span>
+                <span class="info-value">${escapeHtml(filename)}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Folder</span>
-                <span class="info-value">${folder}</span>
+                <span class="info-value">${escapeHtml(folder)}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Position</span>
@@ -2294,32 +2294,32 @@ function showInfoModal() {
             ${metadata.created ? `
             <div class="info-row">
                 <span class="info-label">Date Created</span>
-                <span class="info-value">${metadata.created}</span>
+                <span class="info-value">${escapeHtml(metadata.created)}</span>
             </div>` : ''}
             ${metadata.modified ? `
             <div class="info-row">
                 <span class="info-label">Modified</span>
-                <span class="info-value">${metadata.modified}</span>
+                <span class="info-value">${escapeHtml(metadata.modified)}</span>
             </div>` : ''}
             ${camera ? `
             <div class="info-row">
                 <span class="info-label">Camera</span>
-                <span class="info-value">${camera}</span>
+                <span class="info-value">${escapeHtml(camera)}</span>
             </div>` : ''}
             ${photoDate ? `
             <div class="info-row">
                 <span class="info-label">Photo Date</span>
-                <span class="info-value">${photoDate}</span>
+                <span class="info-value">${escapeHtml(photoDate)}</span>
             </div>` : ''}
             ${metadata.size_formatted ? `
             <div class="info-row">
                 <span class="info-label">File Size</span>
-                <span class="info-value">${metadata.size_formatted}</span>
+                <span class="info-value">${escapeHtml(metadata.size_formatted)}</span>
             </div>` : ''}
             ${metadata.resolution ? `
             <div class="info-row">
                 <span class="info-label">Dimensions</span>
-                <span class="info-value">${metadata.resolution}</span>
+                <span class="info-value">${escapeHtml(metadata.resolution)}</span>
             </div>` : ''}
         `;
     }).catch(error => {
@@ -2328,11 +2328,11 @@ function showInfoModal() {
             <div class="settings-seen-header">Image Info</div>
             <div class="info-row">
                 <span class="info-label">Filename</span>
-                <span class="info-value">${filename}</span>
+                <span class="info-value">${escapeHtml(filename)}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Folder</span>
-                <span class="info-value">${folder}</span>
+                <span class="info-value">${escapeHtml(folder)}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Position</span>

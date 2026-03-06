@@ -56,7 +56,7 @@ def verify_password(username, password):
     if not is_auth_enabled():
         return True  # Auth disabled, allow all
     
-    if password == get_password():
+    if secrets.compare_digest(password, get_password()):
         session[SESSION_KEY] = True
         return username
     return None
@@ -97,7 +97,7 @@ def session_login(password):
     if not is_auth_enabled():
         return True  # Auth disabled, always succeed
     
-    if password == get_password():
+    if secrets.compare_digest(password, get_password()):
         session[SESSION_KEY] = True
         generate_csrf_token()
         return True

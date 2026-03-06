@@ -52,6 +52,21 @@ def normalize_path(path_str: str) -> str:
     return os.path.normpath(expand_path(path_str))
 
 
+def resolve_path(path_str: str) -> str:
+    """Resolve a path to its real (symlink-free) absolute form.
+
+    Used for security checks to prevent symlink-based sandbox escapes.
+    Unlike normalize_path(), this follows symlinks to the true target.
+
+    Args:
+        path_str: The path string to resolve
+
+    Returns:
+        The resolved real path
+    """
+    return os.path.realpath(os.path.expanduser(path_str))
+
+
 def is_path_allowed(path_to_check: str) -> bool:
     """Check if a path is within the allowed folders for the current session.
 
@@ -59,21 +74,27 @@ def is_path_allowed(path_to_check: str) -> bool:
     Falls back to the global config when profiles are not in use.
     Also allows paths within the thumbnail cache directory.
 
+    Resolves symlinks on both the path and folder roots to prevent
+    symlink-based sandbox escapes.
+
     Args:
         path_to_check: The path to validate (should be already expanded/normalized)
 
     Returns:
         bool: True if path is within an allowed folder
     """
+    # Resolve symlinks on the path being checked
+    resolved_path = resolve_path(path_to_check)
+
     from app.services.profiles import get_current_folders
     folders = get_current_folders()
     for folder in folders:
-        folder_normalized = normalize_path(folder)
-        if path_to_check.startswith(folder_normalized):
+        folder_resolved = resolve_path(folder)
+        if resolved_path == folder_resolved or resolved_path.startswith(folder_resolved + os.sep):
             return True
     # Always allow the thumbnail cache directory
-    thumb_normalized = normalize_path(THUMBNAIL_DIR)
-    if path_to_check.startswith(thumb_normalized):
+    thumb_resolved = resolve_path(THUMBNAIL_DIR)
+    if resolved_path == thumb_resolved or resolved_path.startswith(thumb_resolved + os.sep):
         return True
     return False
 

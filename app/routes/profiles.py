@@ -5,6 +5,7 @@ Provides the profile picker page and CRUD API for user profiles.
 """
 
 import os
+import secrets
 from flask import Blueprint, request, jsonify, redirect, url_for, send_file, session
 
 from app.services.profiles import (
@@ -170,7 +171,7 @@ def create_profile_route():
         if env_admin_pw:
             # Admin password is configured — always require it
             provided = data.get('admin_password', '')
-            if provided != env_admin_pw:
+            if not secrets.compare_digest(provided, env_admin_pw):
                 return jsonify({'error': 'Server admin password required to create admin profiles'}), 403
         else:
             # No env admin password — fall back to role check
@@ -324,7 +325,7 @@ def verify_admin_password_route():
     data = request.get_json() or {}
     provided = data.get('password', '')
 
-    if provided == env_admin_pw:
+    if secrets.compare_digest(provided, env_admin_pw):
         return jsonify({'success': True})
 
     return jsonify({'success': False, 'error': 'Incorrect admin password'}), 401

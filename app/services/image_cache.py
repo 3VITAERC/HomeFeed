@@ -320,7 +320,7 @@ def get_all_images() -> List[str]:
             # Track folder modification time
             folder_mtimes[folder_path] = get_folder_mtime(expanded_path)
 
-            for root, dirs, files in os.walk(expanded_path):
+            for root, dirs, files in os.walk(expanded_path, followlinks=False):
                 for file in files:
                     suffix = Path(file).suffix.lower()
                     if suffix in SUPPORTED_FORMATS:
