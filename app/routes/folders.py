@@ -118,12 +118,24 @@ def add_folder():
     expanded_path = expand_path(path)
 
     if not os.path.isdir(expanded_path):
-        return jsonify({'error': f'Folder not found: {expanded_path}'}), 400
-
-    folders, save_fn = _get_active_folders()
+        return jsonify({'error': 'Folder not found'}), 400
 
     # Normalize path for storage (use expanded path)
     normalized = os.path.normpath(expanded_path)
+
+    # When profiles are active, non-admin users can only add subfolders
+    # of the global folder list (prevents sandbox escape)
+    if is_profiles_active() and not is_current_profile_admin():
+        global_config = load_config()
+        global_folders = global_config.get('folders', [])
+        allowed = any(
+            normalized == gf or normalized.startswith(gf + os.sep)
+            for gf in global_folders
+        )
+        if not allowed:
+            return jsonify({'error': 'Folder not in allowed list'}), 403
+
+    folders, save_fn = _get_active_folders()
 
     if normalized in folders:
         return jsonify({'error': 'Folder already added'}), 400

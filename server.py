@@ -93,4 +93,7 @@ app = create_app()
 if __name__ == '__main__':
     port, debug = get_port()
     print_startup_info(port)
-    app.run(host='0.0.0.0', port=port, debug=debug or os.environ.get('FLASK_DEBUG', '').lower() == 'true')
+    enable_debug = debug or os.environ.get('FLASK_DEBUG', '').lower() == 'true'
+    # Never enable the interactive debugger on network-accessible interfaces
+    # (it provides a remote code execution shell). Only enable auto-reloader.
+    app.run(host='0.0.0.0', port=port, use_reloader=enable_debug, use_debugger=False)

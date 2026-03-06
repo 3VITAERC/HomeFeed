@@ -14,6 +14,7 @@ from app.services import (
     generate_csrf_token,
     validate_csrf_token,
 )
+from app.services.auth import check_login_rate_limit, record_login_attempt
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -47,10 +48,14 @@ def login_submit():
     """
     if not is_auth_enabled():
         return jsonify({'success': True, 'redirect': url_for('pages.index')})
-    
+
     if is_authenticated():
         return jsonify({'success': True, 'redirect': url_for('pages.index')})
-    
+
+    # Rate limit login attempts
+    if not check_login_rate_limit():
+        return jsonify({'success': False, 'error': 'Too many login attempts. Try again later.'}), 429
+
     # Get password from request
     if request.is_json:
         data = request.get_json()
@@ -74,7 +79,8 @@ def login_submit():
             return jsonify({'success': True, 'redirect': dest})
         return redirect(dest)
 
-    # Login failed
+    # Login failed — record attempt for rate limiting
+    record_login_attempt()
     if request.is_json:
         return jsonify({'success': False, 'error': 'Invalid password'}), 401
     return redirect(url_for('auth.login_page'))

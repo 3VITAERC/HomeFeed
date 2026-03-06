@@ -4,9 +4,41 @@ HomeFeed - Flask Application Factory.
 
 import os
 import json
+import secrets
 from flask import Flask, session, redirect, url_for, request, jsonify
 from flask_compress import Compress
 from flask_session import Session
+
+
+def _get_or_create_secret_key(project_root: str) -> str:
+    """Get the secret key from env var, or generate and persist one to a file.
+
+    This ensures all gunicorn workers share the same key, and sessions
+    survive server restarts.
+    """
+    env_key = os.environ.get('HOMEFEED_SECRET_KEY')
+    if env_key:
+        return env_key
+
+    key_file = os.path.join(project_root, '.secret_key')
+    if os.path.exists(key_file):
+        try:
+            with open(key_file, 'r') as f:
+                key = f.read().strip()
+            if key:
+                return key
+        except IOError:
+            pass
+
+    # Generate a new key and persist it
+    key = secrets.token_hex(32)
+    try:
+        with open(key_file, 'w') as f:
+            f.write(key)
+        os.chmod(key_file, 0o600)
+    except IOError:
+        pass  # Fall back to the in-memory key
+    return key
 
 
 def _ensure_config_files_exist():
@@ -65,10 +97,12 @@ def create_app(config=None):
         app.config.update(config)
     
     # Session configuration for authentication
-    app.config['SECRET_KEY'] = os.environ.get('HOMEFEED_SECRET_KEY', os.urandom(24).hex())
+    app.config['SECRET_KEY'] = _get_or_create_secret_key(project_root)
     app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
     app.config['SESSION_FILE_DIR'] = os.path.join(project_root, '.flask_session')
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     Session(app)
     
     # Enable Gzip compression for API responses
@@ -100,9 +134,28 @@ def create_app(config=None):
     app.register_blueprint(profiles_bp)
     app.register_blueprint(comments_bp)
 
+    # Limit request body size to prevent memory exhaustion
+    app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MB
+
     # Add authentication and profile checks before each request
     from app.services import is_auth_enabled, is_authenticated
     from app.services.profiles import is_profiles_active, is_profile_selected
+
+    @app.before_request
+    def check_csrf_origin():
+        """Reject cross-origin mutating requests to prevent CSRF.
+
+        Checks the Origin header on POST/PUT/DELETE/PATCH requests.
+        Requests without an Origin header are allowed (same-origin browser
+        requests and non-browser clients typically omit it).
+        """
+        if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+            origin = request.headers.get('Origin')
+            if origin:
+                # Build the expected origin from the request's Host header
+                expected = request.host_url.rstrip('/')
+                if origin != expected:
+                    return jsonify({'error': 'Cross-origin request blocked'}), 403
 
     @app.before_request
     def check_auth():
@@ -154,5 +207,13 @@ def create_app(config=None):
             return jsonify({'error': 'Profile selection required'}), 401
 
         return None
+
+    @app.after_request
+    def set_security_headers(response):
+        """Add security headers to all responses."""
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['Referrer-Policy'] = 'same-origin'
+        return response
 
     return app
