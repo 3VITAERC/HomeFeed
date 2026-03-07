@@ -5,20 +5,23 @@
  *   - Single IntersectionObserver for all slides (replaces state.observer + state.gifObserver)
  *   - Tracks the one "active" slide (the one currently snapped to viewport)
  *   - Plays/pauses videos and freezes/unfreezes GIFs centrally
- *   - Manages audio via a single <audio> element (TikTok-style)
+ *   - Manages audio via Web Audio API (MediaElementAudioSourceNode)
  *
  * Audio Architecture:
- *   All <video> elements are ALWAYS muted=true. This is required for reliable
- *   autoplay on mobile browsers — unmuted video autoplay is blocked after a few
- *   plays regardless of user interaction history.
+ *   All <video> elements start with muted=true for autoplay policy compliance.
+ *   Audio is routed through a single Web Audio API graph:
  *
- *   Instead, a single <audio> element handles sound:
- *   - Created on first user tap (requires user gesture to unlock audio)
- *   - src is swapped to match the active video when the slide changes
- *   - currentTime is synced to the video via timeupdate events
- *   - Pausing/resuming this element is what "mute/unmute" actually does
+ *   - AudioContext + GainNode created on first user tap (user gesture required)
+ *   - MediaElementAudioSourceNode taps directly into the active <video> element
+ *   - GainNode controls mute/unmute without a second HTTP download
+ *   - video.muted is flipped to false ONLY after play() resolves, so Chrome
+ *     never sees an unmuted autoplay attempt
+ *   - On deactivation, video.muted is restored to true so Chrome stops tracking
+ *     the element as "unmuted media"
  *
- *   This is how TikTok, Instagram Reels, and YouTube Shorts work.
+ *   Key constraint: createMediaElementSource() must be called BEFORE play(),
+ *   while the video is still muted and paused, to avoid mid-playback audio
+ *   pipeline reconfiguration that can stall Chrome's video decoder.
  */
 
 import { state } from './state.js';
@@ -263,6 +266,12 @@ function _activateMedia(slide) {
     if (isVideoUrl(src)) {
         const video = slide.querySelector('video');
         if (video) {
+            // Skip re-activation if this video is already the active, playing video.
+            // IntersectionObserver fires multiple callbacks as scroll-snap settles,
+            // and each _activateMedia call would mute→play→unmute the video, creating
+            // rapid audio pipeline oscillations that destabilize Chrome.
+            if (video === _activeVideo && !video.paused) return;
+
             // Videos start muted for autoplay policy compliance.
             // Web Audio API will unmute for audio output when needed (see _attachAudioToActiveVideo).
             video.muted = true;
@@ -274,18 +283,32 @@ function _activateMedia(slide) {
             // Track this as the active video for audio sync
             _activeVideo = video;
 
+            // Pre-create the MediaElementAudioSourceNode BEFORE calling play().
+            // createMediaElementSource() permanently reroutes the element's audio
+            // through the Web Audio graph.  Calling it mid-playback forces Chrome to
+            // reconfigure its internal audio pipeline, which can stall or reset the
+            // video.  Creating the node while the video is still muted and paused
+            // avoids that reconfiguration during active playback.
+            if (_audioEnabled && _audioContext && _videoSourceNodes) {
+                if (!_videoSourceNodes.has(video)) {
+                    try {
+                        const node = _audioContext.createMediaElementSource(video);
+                        _videoSourceNodes.set(video, node);
+                    } catch (e) {
+                        console.warn('[Viewport] Pre-create source node failed:', e.message);
+                    }
+                }
+            }
+
             // Play the video (muted autoplay is always allowed).
-            // IMPORTANT: audio must be attached AFTER play() resolves, not before.
-            // If _attachAudioToActiveVideo() sets video.muted=false before the play
-            // promise settles, Chrome treats it as an unmuted autoplay attempt.
-            // Chrome's Media Engagement Index allows only a few unmuted autoplays
-            // before blocking — causing the 3rd+ video to freeze at 0:00.
-            // By waiting for play() to resolve first, the video is already playing
-            // (muted), and the subsequent unmute doesn't trigger a new policy check.
+            // Audio is attached AFTER play() resolves — see comment below.
             const playPromise = video.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
-                    // Video is now playing (muted). Safe to attach Web Audio.
+                    // Video is now playing (muted).  Safe to connect the (already-
+                    // created) source node and flip muted→false for Chrome's Web Audio
+                    // routing.  Because the video is already playing, the unmute does
+                    // not trigger a new autoplay policy check.
                     if (_audioEnabled && _audioContext && _activeVideo === video) {
                         _attachAudioToActiveVideo();
                     }
@@ -367,6 +390,12 @@ function _deactivateMedia(slide) {
                 }
                 _activeVideo = null;
             }
+
+            // Restore muted state so Chrome stops tracking this element as
+            // "unmuted media".  Without this, deactivated-but-unmuted videos
+            // accumulate in the DOM and count against Chrome's internal limits,
+            // eventually blocking playback of new videos.
+            video.muted = true;
 
             // NETWORK_LOADING (2) means the browser is actively fetching data.
             // Abort the request by clearing src — this frees bandwidth immediately.
