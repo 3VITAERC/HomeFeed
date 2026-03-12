@@ -6,7 +6,9 @@ Password is set via the HOMEFEED_PASSWORD environment variable.
 """
 
 import os
+import time
 import secrets
+import threading
 from functools import wraps
 from flask import session, request, redirect, url_for, jsonify
 from flask_httpauth import HTTPBasicAuth
@@ -17,6 +19,35 @@ auth = HTTPBasicAuth()
 # Session key for logged-in state
 SESSION_KEY = 'authenticated'
 CSRF_TOKEN_KEY = 'csrf_token'
+
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter for login endpoints
+# ---------------------------------------------------------------------------
+_LOGIN_RATE_LIMIT = 5        # max attempts
+_LOGIN_RATE_WINDOW = 60      # per this many seconds
+_login_attempts = {}         # ip -> list of timestamps
+_login_lock = threading.Lock()
+
+
+def _prune_old_attempts(ip: str) -> None:
+    """Remove login attempts older than the rate window."""
+    cutoff = time.time() - _LOGIN_RATE_WINDOW
+    _login_attempts[ip] = [t for t in _login_attempts.get(ip, []) if t > cutoff]
+
+
+def check_login_rate_limit() -> bool:
+    """Return True if the current IP is within the rate limit, False if blocked."""
+    ip = request.remote_addr or '0.0.0.0'
+    with _login_lock:
+        _prune_old_attempts(ip)
+        return len(_login_attempts.get(ip, [])) < _LOGIN_RATE_LIMIT
+
+
+def record_login_attempt() -> None:
+    """Record a failed login attempt for the current IP."""
+    ip = request.remote_addr or '0.0.0.0'
+    with _login_lock:
+        _login_attempts.setdefault(ip, []).append(time.time())
 
 
 def is_auth_enabled():
@@ -56,7 +87,7 @@ def verify_password(username, password):
     if not is_auth_enabled():
         return True  # Auth disabled, allow all
     
-    if password == get_password():
+    if secrets.compare_digest(password, get_password()):
         session[SESSION_KEY] = True
         return username
     return None
@@ -97,7 +128,7 @@ def session_login(password):
     if not is_auth_enabled():
         return True  # Auth disabled, always succeed
     
-    if password == get_password():
+    if secrets.compare_digest(password, get_password()):
         session[SESSION_KEY] = True
         generate_csrf_token()
         return True

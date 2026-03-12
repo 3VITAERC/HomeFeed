@@ -5,6 +5,7 @@ Provides the profile picker page and CRUD API for user profiles.
 """
 
 import os
+import secrets
 from flask import Blueprint, request, jsonify, redirect, url_for, send_file, session
 
 from app.services.profiles import (
@@ -25,6 +26,7 @@ from app.services.profiles import (
     save_profile_config,
 )
 from app.services.data import load_config
+from app.services.auth import check_login_rate_limit, record_login_attempt
 
 profiles_bp = Blueprint('profiles', __name__)
 
@@ -63,6 +65,9 @@ def list_profiles():
 @profiles_bp.route('/api/profiles/login', methods=['POST'])
 def profile_login():
     """Select a profile and verify its password (if set)."""
+    if not check_login_rate_limit():
+        return jsonify({'success': False, 'error': 'Too many attempts. Try again later.'}), 429
+
     data = request.get_json() or {}
     profile_id = data.get('profile_id', '').strip()
     password = data.get('password', '')
@@ -75,6 +80,7 @@ def profile_login():
         return jsonify({'success': False, 'error': 'Profile not found'}), 404
 
     if not verify_profile_password(profile_id, password):
+        record_login_attempt()
         return jsonify({'success': False, 'error': 'Incorrect password'}), 401
 
     set_current_profile(profile_id)
@@ -170,7 +176,7 @@ def create_profile_route():
         if env_admin_pw:
             # Admin password is configured — always require it
             provided = data.get('admin_password', '')
-            if provided != env_admin_pw:
+            if not secrets.compare_digest(provided, env_admin_pw):
                 return jsonify({'error': 'Server admin password required to create admin profiles'}), 403
         else:
             # No env admin password — fall back to role check
@@ -316,6 +322,9 @@ def verify_admin_password_route():
     when the server admin password is configured.  Returns success=True if no password
     is configured (open access) or if the provided password matches.
     """
+    if not check_login_rate_limit():
+        return jsonify({'success': False, 'error': 'Too many attempts. Try again later.'}), 429
+
     env_admin_pw = os.environ.get('HOMEFEED_ADMIN_PASSWORD', '')
     if not env_admin_pw:
         # No admin password configured — gate is open
@@ -324,7 +333,8 @@ def verify_admin_password_route():
     data = request.get_json() or {}
     provided = data.get('password', '')
 
-    if provided == env_admin_pw:
+    if secrets.compare_digest(provided, env_admin_pw):
         return jsonify({'success': True})
 
+    record_login_attempt()
     return jsonify({'success': False, 'error': 'Incorrect admin password'}), 401

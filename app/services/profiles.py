@@ -246,7 +246,7 @@ def verify_profile_password(profile_id: str, password: str) -> bool:
     # Master admin password override (env var)
     if profile.get('role') == 'admin':
         admin_pw = os.environ.get('HOMEFEED_ADMIN_PASSWORD', '')
-        if admin_pw and password == admin_pw:
+        if admin_pw and secrets.compare_digest(password, admin_pw):
             return True
 
     stored_hash = profile.get('password_hash')
