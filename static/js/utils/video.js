@@ -146,8 +146,54 @@ export function setupVideoProgress(video, slide) {
 }
 
 /**
+ * Setup play/pause button state tracking
+ * Updates icon based on video play/pause/waiting/ended events
+ *
+ * @param {HTMLVideoElement} video - The video element
+ * @param {HTMLElement} slide - The slide container element
+ */
+export function setupPlayPauseButton(video, slide) {
+    const btn = slide.querySelector('.video-play-pause-btn');
+    if (!btn) return;
+
+    const playIcon = btn.querySelector('.play-icon');
+    const pauseIcon = btn.querySelector('.pause-icon');
+
+    function showPlay() {
+        playIcon.style.display = 'block';
+        pauseIcon.style.display = 'none';
+    }
+
+    function showPause() {
+        playIcon.style.display = 'none';
+        pauseIcon.style.display = 'block';
+    }
+
+    // Set initial state
+    if (video.paused) showPlay(); else showPause();
+
+    video.addEventListener('play', showPause);
+    video.addEventListener('playing', showPause);
+    video.addEventListener('pause', showPlay);
+    video.addEventListener('ended', showPlay);
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (video.paused || video.ended) {
+            video.play().catch(() => {});
+        } else {
+            video.pause();
+        }
+    });
+
+    btn.addEventListener('touchend', (e) => {
+        e.stopPropagation();
+    }, { passive: true });
+}
+
+/**
  * Add video controls (mute icon and progress bar) to a slide
- * 
+ *
  * @param {HTMLElement} slide - The slide container element
  * @param {HTMLVideoElement} video - The video element
  */
@@ -164,11 +210,19 @@ export function addVideoControls(slide, video) {
         </svg>
     `;
     slide.appendChild(muteIcon);
-    
-    // Create progress bar with buffer indicator and inline time display
+
+    // Create progress bar with play/pause button, buffer indicator and inline time display
     const progressContainer = document.createElement('div');
     progressContainer.className = 'video-progress-container';
     progressContainer.innerHTML = `
+        <button class="video-play-pause-btn" aria-label="Play/Pause">
+            <svg class="play-icon" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z"/>
+            </svg>
+            <svg class="pause-icon" viewBox="0 0 24 24" fill="white" style="display:none">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+        </button>
         <div class="video-progress-bar">
             <div class="video-progress-buffered"></div>
             <div class="video-progress-filled">
@@ -178,9 +232,12 @@ export function addVideoControls(slide, video) {
         <div class="video-time-display">0:00 / 0:00</div>
     `;
     slide.appendChild(progressContainer);
-    
+
     // Setup progress bar functionality
     setupVideoProgress(video, slide);
+
+    // Setup play/pause button
+    setupPlayPauseButton(video, slide);
 }
 
 export default {
@@ -188,5 +245,6 @@ export default {
     toggleVideoMute,
     showMuteIconFeedback,
     setupVideoProgress,
+    setupPlayPauseButton,
     addVideoControls,
 };
