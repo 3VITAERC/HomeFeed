@@ -5,7 +5,7 @@
 
 /**
  * Format time in MM:SS format
- * 
+ *
  * @param {number} seconds - Time in seconds
  * @returns {string} Formatted time string
  */
@@ -19,7 +19,7 @@ export function formatVideoTime(seconds) {
 /**
  * Toggle video mute/unmute with visual feedback
  * Instagram-style: tap to toggle audio, show icon briefly in center
- * 
+ *
  * @param {HTMLVideoElement} video - The video element
  * @param {HTMLElement} slide - The slide container element
  */
@@ -31,18 +31,18 @@ export function toggleVideoMute(video, slide) {
 /**
  * Show mute/unmute icon in center of screen briefly (Instagram-style)
  * Icon fades out after ~600ms
- * 
+ *
  * @param {HTMLElement} slide - The slide container element
  * @param {boolean} isMuted - Whether the video is muted
  */
 export function showMuteIconFeedback(slide, isMuted) {
     const muteIcon = slide.querySelector('.video-mute-icon');
     if (!muteIcon) return;
-    
+
     // Update which icon to show
     const mutedSvg = muteIcon.querySelector('.muted-icon');
     const unmutedSvg = muteIcon.querySelector('.unmuted-icon');
-    
+
     if (isMuted) {
         if (mutedSvg) mutedSvg.style.display = 'block';
         if (unmutedSvg) unmutedSvg.style.display = 'none';
@@ -50,155 +50,177 @@ export function showMuteIconFeedback(slide, isMuted) {
         if (mutedSvg) mutedSvg.style.display = 'none';
         if (unmutedSvg) unmutedSvg.style.display = 'block';
     }
-    
+
     // Show icon
     muteIcon.classList.add('visible');
-    
+
     // Hide after 600ms
     setTimeout(() => {
         muteIcon.classList.remove('visible');
     }, 600);
 }
 
+// ─── Shared progress bar state ────────────────────────────────────────────────
+
+let _pbVideo = null;     // video currently wired to the shared bar
+let _pbHandlers = {};    // event handler refs for cleanup
+
 /**
- * Setup video progress bar and time display
- * 
- * @param {HTMLVideoElement} video - The video element
- * @param {HTMLElement} slide - The slide container element
+ * Detach the shared progress bar from any current video and hide it.
  */
-export function setupVideoProgress(video, slide) {
-    const progressContainer = slide.querySelector('.video-progress-container');
-    const progressBar = slide.querySelector('.video-progress-bar');
-    const progressFilled = slide.querySelector('.video-progress-filled');
-    const progressBuffered = slide.querySelector('.video-progress-buffered');
-    const timeDisplay = slide.querySelector('.video-time-display');
-    
-    if (!progressContainer || !progressFilled || !progressBar) return;
-    
-    // Update progress bar as video plays
-    video.addEventListener('timeupdate', () => {
-        if (video.duration && isFinite(video.duration)) {
-            const progress = (video.currentTime / video.duration) * 100;
-            progressFilled.style.width = `${progress}%`;
-            
-            // Update time display
-            if (timeDisplay) {
-                const current = formatVideoTime(video.currentTime);
-                const total = formatVideoTime(video.duration);
-                timeDisplay.textContent = `${current} / ${total}`;
+export function detachProgressBar() {
+    const container = document.getElementById('videoProgressBar');
+    if (container) container.style.display = 'none';
+
+    if (_pbVideo) {
+        ['timeupdate', 'progress', 'loadedmetadata', 'play', 'playing', 'pause', 'ended'].forEach(evt => {
+            if (_pbHandlers[evt]) _pbVideo.removeEventListener(evt, _pbHandlers[evt]);
+        });
+
+        if (container) {
+            const progressBar = container.querySelector('.video-progress-bar');
+            if (progressBar) {
+                if (_pbHandlers.barClick)      progressBar.removeEventListener('click',      _pbHandlers.barClick);
+                if (_pbHandlers.barTouchstart) progressBar.removeEventListener('touchstart', _pbHandlers.barTouchstart);
+                if (_pbHandlers.barTouchmove)  progressBar.removeEventListener('touchmove',  _pbHandlers.barTouchmove);
+                if (_pbHandlers.barTouchend)   progressBar.removeEventListener('touchend',   _pbHandlers.barTouchend);
             }
         }
-    });
-    
-    // Update buffer indicator as video loads
-    video.addEventListener('progress', () => {
-        if (!progressBuffered || !video.duration || !isFinite(video.duration)) return;
-        
-        // Get the last buffered range (most recent)
-        if (video.buffered.length > 0) {
-            const bufferedEnd = video.buffered.end(video.buffered.length - 1);
-            const bufferedPercent = (bufferedEnd / video.duration) * 100;
-            progressBuffered.style.width = `${bufferedPercent}%`;
+    }
+
+    _pbVideo = null;
+    _pbHandlers = {};
+}
+
+/**
+ * Wire the shared progress bar to a video element and show it.
+ * Call this whenever a video slide becomes active.
+ *
+ * @param {HTMLVideoElement} video
+ */
+export function attachProgressBarToVideo(video) {
+    const container = document.getElementById('videoProgressBar');
+    if (!container) return;
+
+    detachProgressBar(); // clean up previous video's listeners
+
+    const progressBar     = container.querySelector('.video-progress-bar');
+    const progressFilled  = container.querySelector('.video-progress-filled');
+    const progressBuffered = container.querySelector('.video-progress-buffered');
+    const timeDisplay     = container.querySelector('.video-time-display');
+    const btn             = container.querySelector('.video-play-pause-btn');
+    const playIcon        = btn?.querySelector('.play-icon');
+    const pauseIcon       = btn?.querySelector('.pause-icon');
+
+    if (!progressBar || !progressFilled) return;
+
+    _pbVideo = video;
+
+    // ── Progress / time ──────────────────────────────────────────────────────
+
+    const updateProgress = () => {
+        if (video.duration && isFinite(video.duration)) {
+            progressFilled.style.width = `${(video.currentTime / video.duration) * 100}%`;
+            if (timeDisplay) {
+                timeDisplay.textContent = `${formatVideoTime(video.currentTime)} / ${formatVideoTime(video.duration)}`;
+            }
         }
-    });
-    
-    // Reset progress bar when video loops
-    video.addEventListener('loadedmetadata', () => {
+    };
+    updateProgress(); // initialize immediately with current position
+
+    _pbHandlers.timeupdate = updateProgress;
+    video.addEventListener('timeupdate', _pbHandlers.timeupdate);
+
+    _pbHandlers.progress = () => {
+        if (!progressBuffered || !video.duration || !isFinite(video.duration)) return;
+        if (video.buffered.length > 0) {
+            progressBuffered.style.width = `${(video.buffered.end(video.buffered.length - 1) / video.duration) * 100}%`;
+        }
+    };
+    video.addEventListener('progress', _pbHandlers.progress);
+
+    _pbHandlers.loadedmetadata = () => {
         progressFilled.style.width = '0%';
         if (progressBuffered) progressBuffered.style.width = '0%';
-    });
-    
-    // Handle seeking by tapping/clicking on progress bar
-    // Use progressBar for click target to avoid time display
-    progressBar.addEventListener('click', (e) => {
-        e.stopPropagation(); // Don't trigger mute toggle
-        
+        if (timeDisplay) timeDisplay.textContent = '0:00 / 0:00';
+    };
+    video.addEventListener('loadedmetadata', _pbHandlers.loadedmetadata);
+
+    // ── Play/pause button icon ────────────────────────────────────────────────
+
+    const showPlay  = () => { if (playIcon) playIcon.style.display = 'block'; if (pauseIcon) pauseIcon.style.display = 'none'; };
+    const showPause = () => { if (playIcon) playIcon.style.display = 'none';  if (pauseIcon) pauseIcon.style.display = 'block'; };
+
+    if (video.paused) showPlay(); else showPause();
+
+    _pbHandlers.play    = showPause;
+    _pbHandlers.playing = showPause;
+    _pbHandlers.pause   = showPlay;
+    _pbHandlers.ended   = showPlay;
+    video.addEventListener('play',    _pbHandlers.play);
+    video.addEventListener('playing', _pbHandlers.playing);
+    video.addEventListener('pause',   _pbHandlers.pause);
+    video.addEventListener('ended',   _pbHandlers.ended);
+
+    // ── Seek by click / touch ─────────────────────────────────────────────────
+
+    _pbHandlers.barClick = (e) => {
+        e.stopPropagation();
         if (video.duration && isFinite(video.duration)) {
             const rect = progressBar.getBoundingClientRect();
             const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             video.currentTime = percent * video.duration;
         }
-    });
-    
-    // Handle dragging on progress bar
+    };
+    progressBar.addEventListener('click', _pbHandlers.barClick);
+
     let isDragging = false;
-    
-    progressBar.addEventListener('touchstart', (e) => {
-        e.stopPropagation();
-        isDragging = true;
-    }, { passive: true });
-    
-    progressBar.addEventListener('touchmove', (e) => {
+    _pbHandlers.barTouchstart = (e) => { e.stopPropagation(); isDragging = true; };
+    _pbHandlers.barTouchmove  = (e) => {
         if (!isDragging) return;
         e.stopPropagation();
-        
         if (video.duration && isFinite(video.duration)) {
             const touch = e.touches[0];
             const rect = progressBar.getBoundingClientRect();
             const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
             video.currentTime = percent * video.duration;
         }
-    }, { passive: true });
-    
-    progressBar.addEventListener('touchend', () => {
-        isDragging = false;
-    }, { passive: true });
+    };
+    _pbHandlers.barTouchend = () => { isDragging = false; };
+    progressBar.addEventListener('touchstart', _pbHandlers.barTouchstart, { passive: true });
+    progressBar.addEventListener('touchmove',  _pbHandlers.barTouchmove,  { passive: true });
+    progressBar.addEventListener('touchend',   _pbHandlers.barTouchend,   { passive: true });
+
+    // ── Play/pause button click ───────────────────────────────────────────────
+    // Bound once via a persistent wrapper that reads _pbVideo at call time.
+
+    if (btn && !btn._pbClickBound) {
+        btn._pbClickBound = true;
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!_pbVideo) return;
+            if (_pbVideo.paused || _pbVideo.ended) {
+                _pbVideo.play().catch(() => {});
+            } else {
+                _pbVideo.pause();
+            }
+        });
+        btn.addEventListener('touchend', (e) => { e.stopPropagation(); }, { passive: true });
+    }
+
+    container.style.display = 'flex';
 }
 
 /**
- * Setup play/pause button state tracking
- * Updates icon based on video play/pause/waiting/ended events
- *
- * @param {HTMLVideoElement} video - The video element
- * @param {HTMLElement} slide - The slide container element
- */
-export function setupPlayPauseButton(video, slide) {
-    const btn = slide.querySelector('.video-play-pause-btn');
-    if (!btn) return;
-
-    const playIcon = btn.querySelector('.play-icon');
-    const pauseIcon = btn.querySelector('.pause-icon');
-
-    function showPlay() {
-        playIcon.style.display = 'block';
-        pauseIcon.style.display = 'none';
-    }
-
-    function showPause() {
-        playIcon.style.display = 'none';
-        pauseIcon.style.display = 'block';
-    }
-
-    // Set initial state
-    if (video.paused) showPlay(); else showPause();
-
-    video.addEventListener('play', showPause);
-    video.addEventListener('playing', showPause);
-    video.addEventListener('pause', showPlay);
-    video.addEventListener('ended', showPlay);
-
-    btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (video.paused || video.ended) {
-            video.play().catch(() => {});
-        } else {
-            video.pause();
-        }
-    });
-
-    btn.addEventListener('touchend', (e) => {
-        e.stopPropagation();
-    }, { passive: true });
-}
-
-/**
- * Add video controls (mute icon and progress bar) to a slide
+ * Add video controls (mute icon only) to a slide.
+ * The progress bar is a single shared element (#videoProgressBar) managed
+ * by attachProgressBarToVideo() / detachProgressBar().
  *
  * @param {HTMLElement} slide - The slide container element
  * @param {HTMLVideoElement} video - The video element
  */
-export function addVideoControls(slide, video) {
-    // Create mute icon
+export function addVideoControls(slide, video) {  // eslint-disable-line no-unused-vars
+    // Create mute icon (per-slide: shows when toggling audio on this slide)
     const muteIcon = document.createElement('div');
     muteIcon.className = 'video-mute-icon';
     muteIcon.innerHTML = `
@@ -210,41 +232,13 @@ export function addVideoControls(slide, video) {
         </svg>
     `;
     slide.appendChild(muteIcon);
-
-    // Create progress bar with play/pause button, buffer indicator and inline time display
-    const progressContainer = document.createElement('div');
-    progressContainer.className = 'video-progress-container';
-    progressContainer.innerHTML = `
-        <button class="video-play-pause-btn" aria-label="Play/Pause">
-            <svg class="play-icon" viewBox="0 0 24 24" fill="white">
-                <path d="M8 5v14l11-7z"/>
-            </svg>
-            <svg class="pause-icon" viewBox="0 0 24 24" fill="white" style="display:none">
-                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            </svg>
-        </button>
-        <div class="video-progress-bar">
-            <div class="video-progress-buffered"></div>
-            <div class="video-progress-filled">
-                <div class="video-progress-handle"></div>
-            </div>
-        </div>
-        <div class="video-time-display">0:00 / 0:00</div>
-    `;
-    slide.appendChild(progressContainer);
-
-    // Setup progress bar functionality
-    setupVideoProgress(video, slide);
-
-    // Setup play/pause button
-    setupPlayPauseButton(video, slide);
 }
 
 export default {
     formatVideoTime,
     toggleVideoMute,
     showMuteIconFeedback,
-    setupVideoProgress,
-    setupPlayPauseButton,
+    attachProgressBarToVideo,
+    detachProgressBar,
     addVideoControls,
 };

@@ -772,8 +772,30 @@
         </div>
     </div>
     
-    <!-- File path display at bottom left -->
-    <div class="file-path-display" id="filePathDisplay"></div>
+    <!-- Unified bottom-left info bar: file path + video progress stacked together -->
+    <div class="bottom-info-bar" id="bottomInfoBar">
+        <!-- File path display -->
+        <div class="file-path-display" id="filePathDisplay"></div>
+
+        <!-- Shared video progress bar (one element, wired to active video by JS) -->
+        <div class="video-progress-container" id="videoProgressBar" style="display:none">
+            <button class="video-play-pause-btn" aria-label="Play/Pause">
+                <svg class="play-icon" viewBox="0 0 24 24" fill="white">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+                <svg class="pause-icon" viewBox="0 0 24 24" fill="white" style="display:none">
+                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                </svg>
+            </button>
+            <div class="video-progress-bar">
+                <div class="video-progress-buffered"></div>
+                <div class="video-progress-filled">
+                    <div class="video-progress-handle"></div>
+                </div>
+            </div>
+            <div class="video-time-display">0:00 / 0:00</div>
+        </div>
+    </div>
 
     <!-- Comments Panel (TikTok-style bottom sheet) -->
     <div class="comments-overlay" id="commentsOverlay" style="display: none;" aria-hidden="true"></div>

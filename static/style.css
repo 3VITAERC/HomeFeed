@@ -240,18 +240,41 @@ html, body {
     text-align: center;
 }
 
+/* ============ Unified Bottom Info Bar ============ */
+
+/* Single fixed container for file path + video progress.
+   Positioned as one unit so the two elements always stay
+   visually relative to each other regardless of browser/device.
+   Stops right: 80px to clear the action bar (48px wide at right: 24px). */
+.bottom-info-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 100;
+    pointer-events: none; /* pass through taps to slide; children opt back in */
+}
+
+@supports (padding-top: env(safe-area-inset-top)) {
+    .bottom-info-bar {
+        padding-bottom: calc(20px + env(safe-area-inset-bottom));
+        padding-left: calc(16px + env(safe-area-inset-left));
+    }
+}
+
 /* ============ Video Progress Bar ============ */
 
 .video-progress-container {
-    position: absolute;
-    bottom: 66px; /* Moved down 10px from 56px */
-    left: 16px;
-    right: 16px; /* Full width at bottom */
+    /* position/bottom/left/right owned by .bottom-info-bar */
     height: 24px;
     display: flex;
     align-items: center;
     gap: 14px;
-    z-index: 55;
+    pointer-events: auto;
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -373,14 +396,6 @@ html, body {
     font-family: monospace;
     white-space: nowrap;
     flex-shrink: 0;
-}
-
-/* Safe area adjustments for video controls */
-@supports (padding-top: env(safe-area-inset-top)) {
-    .video-progress-container {
-        bottom: calc(66px + env(safe-area-inset-bottom));
-        left: calc(16px + env(safe-area-inset-left));
-    }
 }
 
 /* ============ Trash Marked Image Indicator ============ */
@@ -1276,11 +1291,6 @@ html, body {
     .action-bar {
         bottom: calc(70px + env(safe-area-inset-bottom));
         right: calc(16px + env(safe-area-inset-right));
-    }
-    
-    .photo-info {
-        bottom: calc(80px + env(safe-area-inset-bottom));
-        left: calc(16px + env(safe-area-inset-left));
     }
 }
 
@@ -2984,17 +2994,13 @@ html, body {
 /* ============ File Path Display ============ */
 
 .file-path-display {
-    position: fixed;
-    bottom: 71px; /* Moved down 15px from 86px to sit just above video progress bar */
-    left: 16px; /* Match video progress bar left position */
-    right: 46px; /* 30px extra from right to avoid overlapping settings icon */
-    max-width: none; /* Remove max-width constraint to match video bar width */
+    /* position/bottom/left/right/z-index owned by .bottom-info-bar */
     padding: 0;
     background: transparent;
-    font-size: 14px; /* Increased 15% from 12px */
+    font-size: 14px;
     color: rgba(255, 255, 255, 0.7);
-    z-index: 100;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
 }
 
 .file-path-folder {

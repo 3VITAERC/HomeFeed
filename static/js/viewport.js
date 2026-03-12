@@ -28,7 +28,7 @@
 import { state } from './state.js';
 import { isGifUrl, isVideoUrl } from './utils/path.js';
 import { freezeGif, unfreezeGif } from './utils/gif.js';
-import { showMuteIconFeedback } from './utils/video.js';
+import { showMuteIconFeedback, attachProgressBarToVideo, detachProgressBar } from './utils/video.js';
 
 // ─── Internal State ───────────────────────────────────────────────────────────
 
@@ -156,6 +156,7 @@ export function destroyObserver() {
     _scrollGeneration++; // invalidate any in-flight preload chains during mode rebuild
     _stopAudio();
     _activeVideo = null;
+    detachProgressBar();
 }
 
 /**
@@ -380,6 +381,9 @@ function _activateMedia(slide) {
             _stopAudio();
             _activeVideo = video;
 
+            // Wire shared progress bar to this video
+            attachProgressBarToVideo(video);
+
             const playPromise = video.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
@@ -445,6 +449,7 @@ function _deactivateMedia(slide) {
             if (video === _activeVideo) {
                 _stopAudio();
                 _activeVideo = null;
+                detachProgressBar();
             }
 
             if (videoLoading || posterLoading) {
