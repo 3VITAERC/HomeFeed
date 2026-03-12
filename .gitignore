@@ -16,6 +16,7 @@ Plans
 
 # Flask session files
 .flask_session/
+.secret_key
 
 # Plans directory
 plans/
