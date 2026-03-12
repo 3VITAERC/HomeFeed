@@ -2,23 +2,27 @@
  * ViewportManager — unified viewport and media control for HomeFeed.
  *
  * Responsibilities:
- *   - Single IntersectionObserver for all slides (replaces state.observer + state.gifObserver)
+ *   - Single IntersectionObserver for all slides
  *   - Tracks the one "active" slide (the one currently snapped to viewport)
  *   - Plays/pauses videos and freezes/unfreezes GIFs centrally
- *   - Manages audio via a single <audio> element (TikTok-style)
+ *   - Manages audio via a persistent <audio> element (iOS-safe)
  *
- * Audio Architecture:
- *   All <video> elements are ALWAYS muted=true. This is required for reliable
- *   autoplay on mobile browsers — unmuted video autoplay is blocked after a few
- *   plays regardless of user interaction history.
+ * Audio Architecture (iOS-compatible):
+ *   All <video> elements ALWAYS stay muted. This guarantees autoplay works
+ *   on every platform including iOS Safari, Chrome on iOS, and PWA mode.
  *
- *   Instead, a single <audio> element handles sound:
- *   - Created on first user tap (requires user gesture to unlock audio)
- *   - src is swapped to match the active video when the slide changes
- *   - currentTime is synced to the video via timeupdate events
- *   - Pausing/resuming this element is what "mute/unmute" actually does
+ *   Audio is routed through a single persistent <audio> element that is
+ *   "blessed" (unlocked) by the user's first tap on the mute/unmute button.
+ *   On iOS, a media element that has been play()-ed from a user gesture can
+ *   continue to be reused with new src values without requiring new gestures.
  *
- *   This is how TikTok, Instagram Reels, and YouTube Shorts work.
+ *   When the user enables audio and scrolls to a new video:
+ *     1. _audioEl.src is set to the same URL as the video
+ *     2. _audioEl.currentTime is synced to the video's currentTime
+ *     3. _audioEl.play() is called
+ *     4. A timeupdate listener keeps audio and video in sync
+ *
+ *   The video element never gets unmuted, so iOS never pauses it.
  */
 
 import { state } from './state.js';
@@ -31,15 +35,88 @@ import { showMuteIconFeedback } from './utils/video.js';
 let _observer = null;
 let _scrollContainer = null;
 let _onActiveChange = null;    // callback(newIndex) — wired in from app.js
-let _audioUnlocked = false;    // true after first user gesture unlocks audio
 let _audioEnabled = false;     // user's desired audio state (persists across slides)
-let _audioContext = null;      // Web Audio API context (created on first user gesture)
-let _gainNode = null;          // GainNode — controls mute/unmute without a second download
-let _activeSourceNode = null;  // MediaElementAudioSourceNode for the current video
-let _videoSourceNodes = null;  // WeakMap<HTMLVideoElement, MediaElementAudioSourceNode>
-let _activeVideo = null;       // current video element being used for audio
+let _activeVideo = null;       // the one <video> element currently playing
 let _hasActivatedOnce = false; // true after first slide activation (handles index-0 initial load)
 let _scrollGeneration = 0;     // incremented on every slide change; used to cancel stale preload chains
+
+// ─── Persistent Audio Element ─────────────────────────────────────────────────
+
+let _audioEl = null;           // persistent <audio> element for iOS-safe audio
+let _audioBlessed = false;     // true after first user-gesture play()
+let _syncHandler = null;       // bound timeupdate handler for cleanup
+
+function _ensureAudioElement() {
+    if (_audioEl) return;
+    _audioEl = document.createElement('audio');
+    _audioEl.preload = 'auto';
+    // Keep it out of the visual DOM but in the document for iOS
+    _audioEl.style.display = 'none';
+    document.body.appendChild(_audioEl);
+}
+
+/**
+ * Start audio playback for the given video element via the persistent <audio>.
+ * Syncs the audio element's src and currentTime to the video, then plays.
+ */
+function _startAudioForVideo(video) {
+    if (!_audioEl || !_audioBlessed) return;
+    if (!video || video.paused) return;
+
+    const videoSrc = video.src || video.currentSrc;
+    if (!videoSrc) return;
+
+    // Remove previous sync handler
+    _stopAudioSync();
+
+    // Set src if different (avoids re-fetching the same resource)
+    if (_audioEl.src !== videoSrc) {
+        _audioEl.src = videoSrc;
+    }
+    _audioEl.currentTime = video.currentTime;
+    _audioEl.loop = video.loop;
+
+    const playPromise = _audioEl.play();
+    if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+            console.log(`[Viewport] Audio play blocked: ${err.message}`);
+        });
+    }
+
+    // Keep audio in sync with video via timeupdate
+    _syncHandler = () => {
+        if (!_audioEl || _audioEl.paused || !video || video.paused) return;
+        const drift = Math.abs(_audioEl.currentTime - video.currentTime);
+        if (drift > 0.3) {
+            _audioEl.currentTime = video.currentTime;
+        }
+    };
+    video.addEventListener('timeupdate', _syncHandler);
+
+    // Sync on seek
+    video.addEventListener('seeked', _syncHandler);
+}
+
+/**
+ * Stop audio and remove sync listeners from the active video.
+ */
+function _stopAudio() {
+    _stopAudioSync();
+    if (_audioEl) {
+        _audioEl.pause();
+    }
+}
+
+/**
+ * Remove timeupdate/seeked sync listeners from _activeVideo.
+ */
+function _stopAudioSync() {
+    if (_syncHandler && _activeVideo) {
+        _activeVideo.removeEventListener('timeupdate', _syncHandler);
+        _activeVideo.removeEventListener('seeked', _syncHandler);
+    }
+    _syncHandler = null;
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -54,6 +131,7 @@ let _scrollGeneration = 0;     // incremented on every slide change; used to can
 export function initViewport(scrollContainer, onActiveChange) {
     _scrollContainer = scrollContainer;
     _onActiveChange  = onActiveChange;
+    _ensureAudioElement();
     _createObserver();
 }
 
@@ -76,11 +154,7 @@ export function destroyObserver() {
     _observer = null;
     _hasActivatedOnce = false;
     _scrollGeneration++; // invalidate any in-flight preload chains during mode rebuild
-    // Disconnect audio source when rebuilding slides
-    if (_activeSourceNode) {
-        try { _activeSourceNode.disconnect(_gainNode); } catch (e) {}
-        _activeSourceNode = null;
-    }
+    _stopAudio();
     _activeVideo = null;
 }
 
@@ -121,26 +195,57 @@ export function activateMediaIfCurrent(slide) {
 /**
  * Toggle audio on/off (the user's "mute/unmute" action).
  *
- * On first call: creates and unlocks the <audio> element (requires user gesture).
- * Subsequent calls: toggles audio playback on/off.
- *
- * Shows mute icon feedback on the current slide.
+ * This is called from a user gesture (tap/click), which is critical for iOS.
+ * On first enable, we "bless" the persistent <audio> element by calling play()
+ * directly from this gesture context — iOS will remember this element as
+ * user-gesture-authorized for future play() calls.
  */
 export function toggleGlobalMute() {
-    if (!_audioUnlocked) {
-        // First tap — create and unlock the audio element
-        _createAudioElement();
-        _audioUnlocked = true;
-        _audioEnabled = true;
-        _attachAudioToActiveVideo();
-    } else {
-        _audioEnabled = !_audioEnabled;
-        if (_audioEnabled) {
-            if (_gainNode) _gainNode.gain.value = 1.0;  // Restore volume (was set to 0 by _pauseAudio)
-            _attachAudioToActiveVideo();
+    _audioEnabled = !_audioEnabled;
+
+    _ensureAudioElement();
+
+    if (_audioEnabled) {
+        // "Bless" the audio element on first enable — must happen in user gesture
+        if (!_audioBlessed) {
+            // Play a tiny bit of silence to unlock the element on iOS.
+            // We'll immediately set the real src when _startAudioForVideo runs.
+            if (_activeVideo) {
+                const videoSrc = _activeVideo.src || _activeVideo.currentSrc;
+                if (videoSrc) {
+                    _audioEl.src = videoSrc;
+                    _audioEl.currentTime = _activeVideo.currentTime;
+                }
+            }
+            const blessPromise = _audioEl.play();
+            if (blessPromise !== undefined) {
+                blessPromise.then(() => {
+                    _audioBlessed = true;
+                    console.log('[Viewport] Audio element blessed by user gesture');
+                    // If we have an active video, start syncing
+                    if (_activeVideo && !_activeVideo.paused) {
+                        _startAudioForVideo(_activeVideo);
+                    }
+                }).catch((err) => {
+                    console.log(`[Viewport] Audio bless failed: ${err.message}`);
+                    // Still mark as blessed — some browsers allow subsequent plays
+                    _audioBlessed = true;
+                    if (_activeVideo && !_activeVideo.paused) {
+                        _startAudioForVideo(_activeVideo);
+                    }
+                });
+            } else {
+                _audioBlessed = true;
+            }
         } else {
-            _pauseAudio();
+            // Already blessed, just start audio for current video
+            if (_activeVideo && !_activeVideo.paused) {
+                _startAudioForVideo(_activeVideo);
+            }
         }
+    } else {
+        // User disabled audio — stop the audio element
+        _stopAudio();
     }
 
     // Show feedback icon on current slide
@@ -148,7 +253,6 @@ export function toggleGlobalMute() {
         `.image-slide[data-index="${state.currentIndex}"]`
     );
     if (currentSlide) {
-        // isMuted = true when audio is disabled
         showMuteIconFeedback(currentSlide, !_audioEnabled);
     }
 
@@ -253,7 +357,7 @@ function _setActiveSlide(newIndex) {
 
 /**
  * Activate media on a slide:
- *   – Video → play (always muted), attach audio if enabled
+ *   – Video → play (always muted), then start audio element if enabled
  *   – GIF   → unfreeze
  */
 function _activateMedia(slide) {
@@ -263,40 +367,31 @@ function _activateMedia(slide) {
     if (isVideoUrl(src)) {
         const video = slide.querySelector('video');
         if (video) {
-            // Videos start muted for autoplay policy compliance.
-            // Web Audio API will unmute for audio output when needed (see _attachAudioToActiveVideo).
+            // Skip re-activation if this video is already the active, playing video.
+            if (video === _activeVideo && !video.paused) return;
+
+            // Videos ALWAYS stay muted — this is the key to iOS compatibility.
             video.muted = true;
 
             // Restore preload to 'auto' for active video so it buffers
-            // (was set to 'none' when deactivated)
             video.preload = 'auto';
 
-            // Track this as the active video for audio sync
+            // Stop audio from previous video before switching
+            _stopAudio();
             _activeVideo = video;
 
-            // Play the video (muted autoplay is always allowed).
-            // IMPORTANT: audio must be attached AFTER play() resolves, not before.
-            // If _attachAudioToActiveVideo() sets video.muted=false before the play
-            // promise settles, Chrome treats it as an unmuted autoplay attempt.
-            // Chrome's Media Engagement Index allows only a few unmuted autoplays
-            // before blocking — causing the 3rd+ video to freeze at 0:00.
-            // By waiting for play() to resolve first, the video is already playing
-            // (muted), and the subsequent unmute doesn't trigger a new policy check.
             const playPromise = video.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
-                    // Video is now playing (muted). Safe to attach Web Audio.
-                    if (_audioEnabled && _audioContext && _activeVideo === video) {
-                        _attachAudioToActiveVideo();
+                    // Video is playing (muted). Start audio element if enabled.
+                    if (_audioEnabled && _activeVideo === video) {
+                        _startAudioForVideo(video);
                     }
                 }).catch((err) => {
                     console.log(`[Viewport] Video play blocked for slide ${slide.dataset.index}: ${err.message}`);
                 });
             }
         } else {
-            // Slide was cleared mid-download (_clearSlideContent). The intersection
-            // observer won't re-fire since the slide's DOM position is unchanged, so
-            // needsLoad will never dispatch on its own — trigger it manually here.
             slide.dispatchEvent(new CustomEvent('needsLoad', { bubbles: true }));
         }
     }
@@ -311,10 +406,6 @@ function _activateMedia(slide) {
 
 /**
  * Remove all child elements from a slide, aborting any in-progress network loads first.
- * After clearing, the slide returns to an empty shell so needsLoad can re-trigger
- * the next time the user scrolls to it.
- * 
- * Handles: VIDEO, IMG (including video-poster class), and any other children.
  */
 function _clearSlideContent(slide) {
     const children = Array.from(slide.children);
@@ -324,7 +415,6 @@ function _clearSlideContent(slide) {
             child.removeAttribute('src');
             child.load(); // forces the browser to cancel any pending range request
         } else if (child.tagName === 'IMG') {
-            // Handles both regular images and video-poster elements
             child.src = ''; // cancels any in-flight image download
         }
         child.remove();
@@ -333,16 +423,10 @@ function _clearSlideContent(slide) {
 
 /**
  * Deactivate media on a slide:
- *   – Video → pause; abort in-flight HTTP range request if still downloading
+ *   – Video → pause, stop audio; abort in-flight HTTP range request if still downloading
  *   – Video poster → abort download if still loading
  *   – GIF   → freeze; abort download if still loading
  *   – Image → abort download if still loading
- *
- * NOTE: video.preload = 'none' does NOT cancel an in-flight HTTP range request
- * in Chrome/Safari. Only removeAttribute('src') + load() actually kills the request.
- * We call _clearSlideContent() for slides that are still actively downloading so
- * the browser connection is freed immediately and the slide becomes an empty shell,
- * allowing needsLoad to re-trigger if the user scrolls back.
  */
 function _deactivateMedia(slide) {
     const src = slide.dataset.src;
@@ -351,34 +435,24 @@ function _deactivateMedia(slide) {
     if (isVideoUrl(src)) {
         const video = slide.querySelector('video');
         const poster = slide.querySelector('.video-poster');
-        
-        // Check if video or poster is still loading
+
         const videoLoading = video && video.networkState === HTMLMediaElement.NETWORK_LOADING;
         const posterLoading = poster && !poster.complete;
-        
+
         if (video) {
             video.pause();
 
-            // Audio cleanup — disconnect source node before potentially removing element
             if (video === _activeVideo) {
-                if (_activeSourceNode) {
-                    try { _activeSourceNode.disconnect(_gainNode); } catch (e) {}
-                    _activeSourceNode = null;
-                }
+                _stopAudio();
                 _activeVideo = null;
             }
 
-            // NETWORK_LOADING (2) means the browser is actively fetching data.
-            // Abort the request by clearing src — this frees bandwidth immediately.
-            // The slide becomes an empty shell so needsLoad re-triggers on revisit.
             if (videoLoading || posterLoading) {
                 _clearSlideContent(slide);
             } else {
-                // Already idle or fully loaded — just stop any future buffering
                 video.preload = 'none';
             }
         } else if (posterLoading) {
-            // Video not created yet but poster is loading
             _clearSlideContent(slide);
         }
     }
@@ -388,12 +462,10 @@ function _deactivateMedia(slide) {
         const video = slide.querySelector('video[data-original-gif="true"]');
         if (img)   freezeGif(img);
         if (video) freezeGif(video);
-        // Abort if the GIF image is still downloading
         if (img && !img.complete) {
             _clearSlideContent(slide);
         }
     } else if (!isVideoUrl(src)) {
-        // Static image: abort if still downloading
         const img = slide.querySelector('img');
         if (img && !img.complete) {
             _clearSlideContent(slide);
@@ -401,100 +473,15 @@ function _deactivateMedia(slide) {
     }
 }
 
-// ─── Audio (Web Audio API) ─────────────────────────────────────────────────────
-//
-// Architecture: instead of a separate <audio src="same-video-url">, we use
-// MediaElementAudioSourceNode to tap directly into the already-downloading
-// <video> element. This eliminates the duplicate HTTP range request that the
-// old <audio> approach caused (video element + audio element = 2x bandwidth).
-//
-// The video element stays muted=true for autoplay policy compliance.
-// The Web Audio gain node controls whether the user hears anything.
+// ─── Audio preloading (no-op) ─────────────────────────────────────────────────
 
 /**
- * Initialise Web Audio API on first user gesture.
- * Must be called from a user-gesture handler (required for AudioContext unlock).
- */
-function _createAudioElement() {
-    if (_audioContext) return;
-
-    _audioContext = new AudioContext();
-    _gainNode = _audioContext.createGain();
-    _gainNode.gain.value = 1.0;
-    _gainNode.connect(_audioContext.destination);
-
-    // WeakMap so entries are garbage-collected when video elements are removed
-    _videoSourceNodes = new WeakMap();
-}
-
-/**
- * Route the active video's audio through the Web Audio graph.
- * Uses MediaElementAudioSourceNode — no second HTTP request.
+ * (No-op) Audio is handled via the persistent <audio> element.
  *
- * createMediaElementSource() can only be called once per element, so we cache
- * the resulting node in _videoSourceNodes and reuse it on revisit.
- */
-function _attachAudioToActiveVideo() {
-    if (!_audioContext || !_activeVideo) return;
-
-    // Resume context if the browser auto-suspended it
-    if (_audioContext.state === 'suspended') {
-        _audioContext.resume().catch((e) => {
-            console.warn('[Viewport] AudioContext resume failed:', e.message);
-        });
-    }
-
-    // Disconnect the previous source connection (not the node itself)
-    if (_activeSourceNode) {
-        try { _activeSourceNode.disconnect(_gainNode); } catch (e) {}
-        _activeSourceNode = null;
-    }
-
-    // Chrome requires video.muted = false for audio to flow to the Web Audio graph.
-    // Safari/Firefox ignore the muted attribute for Web Audio capture, but Chrome
-    // silences the audio pipeline at the source when muted=true.
-    // Safe to unmute here: after createMediaElementSource(), the browser suppresses
-    // the video's direct speaker output regardless of the muted attribute, so there
-    // is no double-audio. We also unmute on reconnection because _activateMedia()
-    // re-sets muted=true each time a slide becomes active.
-    _activeVideo.muted = false;
-
-    // Get or create a MediaElementAudioSourceNode for this video element
-    let sourceNode = _videoSourceNodes.get(_activeVideo);
-    if (!sourceNode) {
-        try {
-            sourceNode = _audioContext.createMediaElementSource(_activeVideo);
-            _videoSourceNodes.set(_activeVideo, sourceNode);
-        } catch (e) {
-            console.warn('[Viewport] createMediaElementSource failed:', e.message);
-            _activeVideo.muted = true;  // Restore on failure so autoplay still works
-            return;
-        }
-    }
-
-    // Wire: video audio → gain node → speakers
-    sourceNode.connect(_gainNode);
-    _activeSourceNode = sourceNode;
-    console.log('[Viewport] Audio: routed via Web Audio API (no duplicate request)');
-}
-
-/**
- * Silence audio output without changing _audioEnabled state.
- * Sets gain to 0 — the source node stays connected for instant un-mute.
- */
-function _pauseAudio() {
-    if (_gainNode) _gainNode.gain.value = 0.0;
-}
-
-/**
- * (No-op) Previously preloaded audio for the next slide via a second <audio>
- * element. Web Audio API routes audio directly from the video element, so no
- * separate preloading is needed or possible without a duplicate download.
- *
- * @param {string} videoSrc - unused
+ * @param {string} _videoSrc - unused
  */
 export function preloadAudioForNextSlide(_videoSrc) {
-    // No-op: Web Audio API approach has no duplicate-download audio preloading.
+    // No-op: audio comes from the persistent <audio> element.
 }
 
 export default {
