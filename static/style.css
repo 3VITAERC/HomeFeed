@@ -251,7 +251,7 @@ html, body {
     bottom: 0;
     left: 0;
     right: 0;
-    padding: 0 16px 20px;
+    padding: 0 16px 10px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -261,7 +261,7 @@ html, body {
 
 @supports (padding-top: env(safe-area-inset-top)) {
     .bottom-info-bar {
-        padding-bottom: calc(20px + env(safe-area-inset-bottom));
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
         padding-left: calc(16px + env(safe-area-inset-left));
     }
 }
@@ -1310,6 +1310,11 @@ html, body {
     .action-btn svg {
         width: 20px;
         height: 20px;
+    }
+
+    /* Push timeline toward bottom edge of frame */
+    .bottom-info-bar {
+        padding-bottom: 5px;
     }
 }
 
