@@ -23,6 +23,7 @@ from app.services.optimizations import (
     get_thumbnail_path,
     create_thumbnail,
     create_video_poster,
+    extract_video_audio,
 )
 from app.services.data import (
     load_config,
@@ -66,6 +67,7 @@ __all__ = [
     'get_thumbnail_path',
     'create_thumbnail',
     'create_video_poster',
+    'extract_video_audio',
     # Data management
     'load_config',
     'save_config',

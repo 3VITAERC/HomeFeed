@@ -169,3 +169,71 @@ def create_video_poster(
     except Exception as e:
         logger.error("Error extracting video poster %s: %s", video_path, e)
         return False
+
+
+def extract_video_audio(video_path: str) -> Optional[bytes]:
+    """Extract the audio track from a video file and return it as bytes.
+
+    Uses ffmpeg to remux the audio stream (no re-encoding) into an M4A
+    container with the moov atom at the front (faststart) so it is
+    immediately seekable by the browser.
+
+    The result is held in memory only — no file is left on disk.
+
+    Args:
+        video_path: Absolute path to the source video file.
+
+    Returns:
+        bytes of the M4A audio file, or None if extraction fails
+        (e.g. no audio track, ffmpeg not installed, timeout).
+    """
+    import tempfile
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix='.m4a')
+    os.close(tmp_fd)
+
+    try:
+        cmd = [
+            'ffmpeg',
+            '-y',               # overwrite temp file without prompting
+            '-i', video_path,
+            '-vn',              # strip video stream
+            '-acodec', 'copy',  # copy audio as-is — no re-encode, near-instant
+            '-movflags', 'faststart',  # moov atom at front for instant seek
+            tmp_path,
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0 or not os.path.exists(tmp_path):
+            logger.warning(
+                "ffmpeg audio extraction failed for %s: %s",
+                video_path,
+                result.stderr.decode()[:300],
+            )
+            return None
+
+        size = os.path.getsize(tmp_path)
+        if size == 0:
+            logger.warning("ffmpeg produced empty audio for %s (no audio track?)", video_path)
+            return None
+
+        with open(tmp_path, 'rb') as f:
+            return f.read()
+
+    except subprocess.TimeoutExpired:
+        logger.warning("Timeout extracting audio from %s", video_path)
+        return None
+    except FileNotFoundError:
+        logger.warning("ffmpeg not found — audio extraction requires ffmpeg")
+        return None
+    except Exception as e:
+        logger.error("Error extracting audio from %s: %s", video_path, e)
+        return None
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)

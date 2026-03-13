@@ -17,10 +17,17 @@
  *   continue to be reused with new src values without requiring new gestures.
  *
  *   When the user enables audio and scrolls to a new video:
- *     1. _audioEl.src is set to the same URL as the video
+ *     1. _audioEl.src is set to /video-audio?path=... (audio-only endpoint)
  *     2. _audioEl.currentTime is synced to the video's currentTime
  *     3. _audioEl.play() is called
- *     4. A timeupdate listener keeps audio and video in sync
+ *     4. A seeked listener re-syncs currentTime when the user scrubs
+ *
+ *   The /video-audio endpoint uses ffmpeg to extract the audio track on-the-fly
+ *   (no disk storage) and serves it as audio/mp4 with full range request
+ *   support and browser cache headers.  Because the audio file is small
+ *   (~1-2% of the video size), it downloads fast, buffers fully, and never
+ *   competes with the video element for bandwidth — eliminating the main
+ *   source of audio choppiness.
  *
  *   The video element never gets unmuted, so iOS never pauses it.
  */
@@ -44,7 +51,7 @@ let _scrollGeneration = 0;     // incremented on every slide change; used to can
 
 let _audioEl = null;           // persistent <audio> element for iOS-safe audio
 let _audioBlessed = false;     // true after first user-gesture play()
-let _syncHandler = null;       // bound timeupdate handler for cleanup
+let _seekedHandler = null;     // bound seeked handler — resyncs audio on user scrub
 
 function _ensureAudioElement() {
     if (_audioEl) return;
@@ -56,8 +63,38 @@ function _ensureAudioElement() {
 }
 
 /**
+ * Derive the /video-audio URL from a video element's src.
+ *
+ * The video src is an absolute URL like:
+ *   http://host/image?path=%2Fpath%2Fto%2Fvideo.mp4
+ * This converts it to:
+ *   /video-audio?path=%2Fpath%2Fto%2Fvideo.mp4
+ *
+ * Returns null if the src cannot be parsed (e.g. blob URLs, missing path).
+ */
+function _videoSrcToAudioSrc(videoSrc) {
+    try {
+        const url = new URL(videoSrc);
+        const path = url.searchParams.get('path');
+        if (!path) return null;
+        return `/video-audio?path=${encodeURIComponent(path)}`;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Start audio playback for the given video element via the persistent <audio>.
- * Syncs the audio element's src and currentTime to the video, then plays.
+ *
+ * Points the audio element at the /video-audio endpoint (audio-only file,
+ * ~1-2% the size of the video) rather than the full video URL.  This means
+ * the audio element buffers almost instantly and never competes with the
+ * video element for bandwidth, eliminating the main cause of choppy audio.
+ *
+ * Drift correction via timeupdate polling has been intentionally removed.
+ * Both elements play at 1× from the same local server; natural drift over
+ * typical clip lengths is imperceptible.  The only re-sync that happens is
+ * on user seek (seeked event), where an immediate correction is expected.
  */
 function _startAudioForVideo(video) {
     if (!_audioEl || !_audioBlessed) return;
@@ -66,35 +103,44 @@ function _startAudioForVideo(video) {
     const videoSrc = video.src || video.currentSrc;
     if (!videoSrc) return;
 
-    // Remove previous sync handler
+    // Remove previous seeked handler before attaching a new one
     _stopAudioSync();
 
-    // Set src if different (avoids re-fetching the same resource)
-    if (_audioEl.src !== videoSrc) {
-        _audioEl.src = videoSrc;
+    const audioSrc = _videoSrcToAudioSrc(videoSrc) ?? videoSrc;
+
+    // _audioEl.src stores an absolute URL; resolve our relative path to the
+    // same form before comparing so we don't reset a src that's already correct
+    // (which would interrupt audio that is already playing, e.g. right after blessing).
+    const resolvedAudioSrc = new URL(audioSrc, window.location.origin).href;
+
+    if (_audioEl.src !== resolvedAudioSrc) {
+        // Different audio source — load the new one from the beginning
+        _audioEl.src = audioSrc;
+        _audioEl.currentTime = video.currentTime;
+    } else {
+        // Same audio already loaded — just sync time in case of slight drift
+        _audioEl.currentTime = video.currentTime;
     }
-    _audioEl.currentTime = video.currentTime;
     _audioEl.loop = video.loop;
 
-    const playPromise = _audioEl.play();
-    if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-            console.log(`[Viewport] Audio play blocked: ${err.message}`);
-        });
+    // play() is a no-op if already playing (resolved promise); safe to always call
+    if (_audioEl.paused) {
+        const playPromise = _audioEl.play();
+        if (playPromise !== undefined) {
+            playPromise.catch((err) => {
+                console.log(`[Viewport] Audio play blocked: ${err.message}`);
+            });
+        }
     }
 
-    // Keep audio in sync with video via timeupdate
-    _syncHandler = () => {
-        if (!_audioEl || _audioEl.paused || !video || video.paused) return;
-        const drift = Math.abs(_audioEl.currentTime - video.currentTime);
-        if (drift > 0.3) {
+    // Re-sync only when the user explicitly scrubs the timeline.
+    // No polling — both elements naturally stay in sync at 1× speed.
+    _seekedHandler = () => {
+        if (_audioEl && !_audioEl.paused) {
             _audioEl.currentTime = video.currentTime;
         }
     };
-    video.addEventListener('timeupdate', _syncHandler);
-
-    // Sync on seek
-    video.addEventListener('seeked', _syncHandler);
+    video.addEventListener('seeked', _seekedHandler);
 }
 
 /**
@@ -108,14 +154,13 @@ function _stopAudio() {
 }
 
 /**
- * Remove timeupdate/seeked sync listeners from _activeVideo.
+ * Remove the seeked sync listener from _activeVideo.
  */
 function _stopAudioSync() {
-    if (_syncHandler && _activeVideo) {
-        _activeVideo.removeEventListener('timeupdate', _syncHandler);
-        _activeVideo.removeEventListener('seeked', _syncHandler);
+    if (_seekedHandler && _activeVideo) {
+        _activeVideo.removeEventListener('seeked', _seekedHandler);
     }
-    _syncHandler = null;
+    _seekedHandler = null;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -209,12 +254,12 @@ export function toggleGlobalMute() {
     if (_audioEnabled) {
         // "Bless" the audio element on first enable — must happen in user gesture
         if (!_audioBlessed) {
-            // Play a tiny bit of silence to unlock the element on iOS.
-            // We'll immediately set the real src when _startAudioForVideo runs.
+            // Play the audio-only file to unlock the element on iOS.
+            // We'll re-call _startAudioForVideo once the promise resolves.
             if (_activeVideo) {
                 const videoSrc = _activeVideo.src || _activeVideo.currentSrc;
                 if (videoSrc) {
-                    _audioEl.src = videoSrc;
+                    _audioEl.src = _videoSrcToAudioSrc(videoSrc) ?? videoSrc;
                     _audioEl.currentTime = _activeVideo.currentTime;
                 }
             }

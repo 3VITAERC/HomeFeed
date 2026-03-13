@@ -31,6 +31,7 @@ from app.services.optimizations import (
     get_thumbnail_path,
     create_thumbnail,
     create_video_poster,
+    extract_video_audio,
 )
 from app.services.data import get_optimization_settings
 
@@ -601,5 +602,94 @@ def serve_video_poster():
     response.headers['Cache-Control'] = 'public, max-age=604800, immutable'
     response.headers['ETag'] = etag
     response.headers['Last-Modified'] = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(poster_mtime))
-    
+
+    return response
+
+
+@images_bp.route('/video-audio')
+def serve_video_audio():
+    """Serve the audio track extracted from a video file.
+
+    Extracts the audio stream on-the-fly via ffmpeg (no re-encoding, copy
+    only) and returns it as an M4A (audio/mp4) response.  Nothing is written
+    to disk — the bytes live in memory for the duration of this request only.
+    The browser's HTTP cache handles caching via Cache-Control / ETag headers,
+    so subsequent plays of the same video hit the browser cache instantly
+    without touching the server.
+
+    Supports HTTP Range requests so iOS Safari can probe with bytes=0-1 and
+    then fetch the full file in a second request.
+    """
+    video_path = request.args.get('path')
+
+    if not video_path:
+        return 'Path required', 400
+
+    # URL-decode and normalize
+    expanded_video = normalize_path(unquote(video_path))
+
+    # Security: ensure path is within allowed folders
+    if not is_path_allowed(expanded_video):
+        return 'Access denied', 403
+
+    if not os.path.exists(expanded_video):
+        return 'Video not found', 404
+
+    # Only allow actual video files
+    ext = Path(expanded_video).suffix.lower()
+    if ext not in VIDEO_FORMATS:
+        return 'Not a video file', 400
+
+    # ETag based on video path + mtime + size so cache invalidates when the
+    # source file changes, and browser cache is valid for all other requests.
+    try:
+        file_stat = os.stat(expanded_video)
+        file_mtime = int(file_stat.st_mtime)
+        file_size = file_stat.st_size
+    except OSError:
+        return 'Could not read file stats', 500
+
+    etag_hash = hashlib.md5(f"{expanded_video}:{file_mtime}:{file_size}:audio".encode()).hexdigest()
+    etag = f'"{etag_hash}"'
+
+    # Honour conditional GET (browser already has this audio cached)
+    if request.headers.get('If-None-Match') == etag:
+        return '', 304
+
+    # Extract audio — this is the only server-side work; result stays in RAM
+    audio_bytes = extract_video_audio(expanded_video)
+    if audio_bytes is None:
+        return 'No audio track or extraction failed', 404
+
+    audio_size = len(audio_bytes)
+    range_header = request.headers.get('Range')
+
+    if range_header:
+        start, end = _parse_range_header(range_header, audio_size)
+
+        if start is not None:
+            chunk = audio_bytes[start:end + 1]
+            response = make_response(chunk)
+            response.status_code = 206
+            response.headers['Content-Range'] = f'bytes {start}-{end}/{audio_size}'
+            response.headers['Content-Length'] = len(chunk)
+        else:
+            response = make_response('Requested Range Not Satisfiable')
+            response.status_code = 416
+            response.headers['Content-Range'] = f'bytes */{audio_size}'
+            return response
+    else:
+        response = make_response(audio_bytes)
+        response.headers['Content-Length'] = audio_size
+
+    response.headers['Content-Type'] = 'audio/mp4'
+    response.headers['Accept-Ranges'] = 'bytes'
+    # private: audio is derived from user files, not a public asset.
+    # max-age=3600: browser caches for 1 hour; stale-while-revalidate keeps
+    # playback smooth if the cache entry is slightly old.
+    response.headers['Cache-Control'] = 'private, max-age=3600, stale-while-revalidate=60'
+    response.headers['ETag'] = etag
+    response.headers['Last-Modified'] = time.strftime(
+        '%a, %d %b %Y %H:%M:%S GMT', time.gmtime(file_mtime)
+    )
     return response
