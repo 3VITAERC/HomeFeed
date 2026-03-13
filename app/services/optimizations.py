@@ -21,8 +21,11 @@ logger = logging.getLogger(__name__)
 # In-process LRU cache for extracted audio bytes.
 # Keyed by (video_path, mtime) so the entry auto-invalidates when the file changes.
 # 8 slots covers a typical scroll session without unbounded memory growth.
+# _AUDIO_NO_TRACK is stored for videos that have no audio track so we don't
+# re-run ffmpeg on every request for a silent video.
 _audio_cache: OrderedDict = OrderedDict()
 _AUDIO_CACHE_MAX = 8
+_AUDIO_NO_TRACK = object()  # sentinel: ffmpeg confirmed no audio track
 
 
 def ensure_thumbnail_dir() -> None:
@@ -209,7 +212,8 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
 
     if cache_key in _audio_cache:
         _audio_cache.move_to_end(cache_key)
-        return _audio_cache[cache_key]
+        cached = _audio_cache[cache_key]
+        return None if cached is _AUDIO_NO_TRACK else cached
 
     tmp_fd, tmp_path = tempfile.mkstemp(suffix='.m4a')
     os.close(tmp_fd)
@@ -242,11 +246,21 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
                 video_path,
                 stderr_tail,
             )
+            # Cache the "no audio" result so we don't re-run ffmpeg for this
+            # file on every subsequent request (e.g. preload fetches, iOS probes).
+            _audio_cache[cache_key] = _AUDIO_NO_TRACK
+            _audio_cache.move_to_end(cache_key)
+            if len(_audio_cache) > _AUDIO_CACHE_MAX:
+                _audio_cache.popitem(last=False)
             return None
 
         size = os.path.getsize(tmp_path)
         if size == 0:
             logger.warning("ffmpeg produced empty audio for %s (no audio track?)", video_path)
+            _audio_cache[cache_key] = _AUDIO_NO_TRACK
+            _audio_cache.move_to_end(cache_key)
+            if len(_audio_cache) > _AUDIO_CACHE_MAX:
+                _audio_cache.popitem(last=False)
             return None
 
         with open(tmp_path, 'rb') as f:
