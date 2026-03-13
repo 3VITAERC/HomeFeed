@@ -52,6 +52,8 @@ let _scrollGeneration = 0;     // incremented on every slide change; used to can
 let _audioEl = null;           // persistent <audio> element for iOS-safe audio
 let _audioBlessed = false;     // true after first user-gesture play()
 let _seekedHandler = null;     // bound seeked handler — resyncs audio on user scrub
+let _errorFallbackHandler = null; // bound error handler — detects missing ffmpeg
+let _ffmpegUnavailable = false;   // set true after first 501 from /video-audio
 
 function _ensureAudioElement() {
     if (_audioEl) return;
@@ -106,7 +108,10 @@ function _startAudioForVideo(video) {
     // Remove previous seeked handler before attaching a new one
     _stopAudioSync();
 
-    const audioSrc = _videoSrcToAudioSrc(videoSrc) ?? videoSrc;
+    // If ffmpeg is known unavailable, skip straight to the video URL (old behavior).
+    const audioSrc = _ffmpegUnavailable
+        ? videoSrc
+        : (_videoSrcToAudioSrc(videoSrc) ?? videoSrc);
 
     // _audioEl.src stores an absolute URL; resolve our relative path to the
     // same form before comparing so we don't reset a src that's already correct
@@ -122,6 +127,29 @@ function _startAudioForVideo(video) {
         _audioEl.currentTime = video.currentTime;
     }
     _audioEl.loop = video.loop;
+
+    // Fallback: if /video-audio returns 501 (ffmpeg not installed), switch to
+    // the full video URL for audio — same behaviour as before this feature.
+    // 404 (no audio track / extraction failed) is intentionally NOT caught here;
+    // that's a per-file failure and we don't want to fall back to bandwidth
+    // competition just because one video has no audio track.
+    if (!_ffmpegUnavailable) {
+        _errorFallbackHandler = async () => {
+            _errorFallbackHandler = null;
+            try {
+                const res = await fetch(audioSrc, { method: 'HEAD' });
+                if (res.status === 501) {
+                    _ffmpegUnavailable = true;
+                    console.log('[Viewport] ffmpeg not available — falling back to video URL for audio');
+                    _audioEl.src = videoSrc;
+                    _audioEl.currentTime = video.currentTime;
+                    _audioEl.loop = video.loop;
+                    if (_audioEl.paused) _audioEl.play().catch(() => {});
+                }
+            } catch { /* network error during check — ignore */ }
+        };
+        _audioEl.addEventListener('error', _errorFallbackHandler);
+    }
 
     // play() is a no-op if already playing (resolved promise); safe to always call
     if (_audioEl.paused) {
@@ -154,13 +182,18 @@ function _stopAudio() {
 }
 
 /**
- * Remove the seeked sync listener from _activeVideo.
+ * Remove the seeked and error-fallback listeners from the active video/audio.
  */
 function _stopAudioSync() {
     if (_seekedHandler && _activeVideo) {
         _activeVideo.removeEventListener('seeked', _seekedHandler);
     }
     _seekedHandler = null;
+
+    if (_errorFallbackHandler && _audioEl) {
+        _audioEl.removeEventListener('error', _errorFallbackHandler);
+    }
+    _errorFallbackHandler = null;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

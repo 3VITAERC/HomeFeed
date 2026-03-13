@@ -4,6 +4,7 @@ Handles serving images, thumbnails, GIF conversions, and video posters.
 """
 
 import os
+import shutil
 import time
 import hashlib
 import logging
@@ -655,6 +656,11 @@ def serve_video_audio():
     # Honour conditional GET (browser already has this audio cached)
     if request.headers.get('If-None-Match') == etag:
         return '', 304
+
+    # 501 = ffmpeg not installed (client can fall back to video URL).
+    # 404 = ffmpeg present but this specific file has no audio or failed.
+    if not shutil.which('ffmpeg'):
+        return 'ffmpeg not installed', 501
 
     # Extract audio — this is the only server-side work; result stays in RAM
     audio_bytes = extract_video_audio(expanded_video)
