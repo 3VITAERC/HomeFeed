@@ -461,6 +461,27 @@ function _activateMedia(slide) {
             _stopAudio();
             _activeVideo = video;
 
+            // Pre-load audio in parallel with video startup to minimise delay.
+            // Setting _audioEl.src here (before video.play()) kicks off the
+            // browser's audio loading pipeline — cache lookup, header parse,
+            // decoder setup — concurrently with the video. By the time
+            // video.play() resolves and _startAudioForVideo() is called, the
+            // audio element is already buffered and play() starts instantly.
+            if (_audioEnabled && _audioBlessed) {
+                const videoSrc = video.src;
+                if (videoSrc) {
+                    const audioSrc = _ffmpegUnavailable
+                        ? videoSrc
+                        : (_videoSrcToAudioSrc(videoSrc) ?? videoSrc);
+                    const resolvedAudioSrc = new URL(audioSrc, window.location.origin).href;
+                    if (_audioEl.src !== resolvedAudioSrc) {
+                        _audioEl.src = audioSrc;
+                        // Don't play yet — _startAudioForVideo() will sync
+                        // currentTime and call play() once video is running.
+                    }
+                }
+            }
+
             // Wire shared progress bar to this video, with audio callbacks
             attachProgressBarToVideo(video, {
                 onPlay:  () => { if (_audioEnabled) _startAudioForVideo(video); },

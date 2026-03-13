@@ -7,6 +7,7 @@ import os
 import hashlib
 import subprocess
 import logging
+from collections import OrderedDict
 from typing import Optional
 
 from app.config import (
@@ -16,6 +17,12 @@ from app.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+# In-process LRU cache for extracted audio bytes.
+# Keyed by (video_path, mtime) so the entry auto-invalidates when the file changes.
+# 8 slots covers a typical scroll session without unbounded memory growth.
+_audio_cache: OrderedDict = OrderedDict()
+_AUDIO_CACHE_MAX = 8
 
 
 def ensure_thumbnail_dir() -> None:
@@ -180,6 +187,9 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
     copy) ensures compatibility with any input audio codec.
 
     The result is held in memory only — no file is left on disk.
+    Results are cached in an in-process LRU cache (8 slots) keyed by
+    (path, mtime) so repeated requests — including iOS range probes —
+    are served from memory in <1 ms without re-running ffmpeg.
 
     Args:
         video_path: Absolute path to the source video file.
@@ -190,9 +200,21 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
     """
     import tempfile
 
+    # Build cache key from path + mtime so we auto-invalidate on file change.
+    try:
+        mtime = os.path.getmtime(video_path)
+    except OSError:
+        mtime = 0
+    cache_key = (video_path, mtime)
+
+    if cache_key in _audio_cache:
+        _audio_cache.move_to_end(cache_key)
+        return _audio_cache[cache_key]
+
     tmp_fd, tmp_path = tempfile.mkstemp(suffix='.m4a')
     os.close(tmp_fd)
 
+    audio_bytes: Optional[bytes] = None
     try:
         cmd = [
             'ffmpeg',
@@ -228,7 +250,7 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
             return None
 
         with open(tmp_path, 'rb') as f:
-            return f.read()
+            audio_bytes = f.read()
 
     except subprocess.TimeoutExpired:
         logger.warning("Timeout extracting audio from %s", video_path)
@@ -242,3 +264,11 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+    if audio_bytes is not None:
+        _audio_cache[cache_key] = audio_bytes
+        _audio_cache.move_to_end(cache_key)
+        if len(_audio_cache) > _AUDIO_CACHE_MAX:
+            _audio_cache.popitem(last=False)  # evict least-recently-used
+
+    return audio_bytes
