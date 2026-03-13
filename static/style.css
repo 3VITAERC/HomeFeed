@@ -1849,6 +1849,33 @@ html, body {
     margin-top: 8px;
 }
 
+.settings-ffmpeg-row {
+    margin-top: 0;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ffmpeg-status-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+}
+
+.ffmpeg-status-badge.active {
+    background: rgba(0, 255, 0, 0.12);
+    color: #00FF00;
+    border: 1px solid rgba(0, 255, 0, 0.3);
+}
+
+.ffmpeg-status-badge.fallback {
+    background: rgba(255, 165, 0, 0.12);
+    color: #FFA500;
+    border: 1px solid rgba(255, 165, 0, 0.3);
+}
+
 /* Add folder form in modal */
 .settings-add-folder-form {
     display: flex;

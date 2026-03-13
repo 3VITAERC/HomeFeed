@@ -2433,6 +2433,21 @@ async function loadSettingsModalData() {
         const cacheInfo = await API.getCacheInfo();
         const cacheSizeEl = document.getElementById('cacheSizeDisplay');
         if (cacheSizeEl) cacheSizeEl.textContent = cacheInfo.size_formatted || '0 B';
+
+        // ffmpeg status indicator
+        const ffmpegBadge = document.getElementById('ffmpegStatusBadge');
+        const ffmpegDesc  = document.getElementById('ffmpegStatusDesc');
+        if (ffmpegBadge && ffmpegDesc) {
+            if (cacheInfo.ffmpeg_available) {
+                ffmpegBadge.textContent = 'Active';
+                ffmpegBadge.className   = 'ffmpeg-status-badge active';
+                ffmpegDesc.textContent  = 'ffmpeg found — smooth audio via dedicated audio track';
+            } else {
+                ffmpegBadge.textContent = 'Fallback mode';
+                ffmpegBadge.className   = 'ffmpeg-status-badge fallback';
+                ffmpegDesc.textContent  = 'ffmpeg not found — audio plays from video stream (install ffmpeg for best quality)';
+            }
+        }
         
         // Load optimization settings and update toggle states
         const appSettings = await API.getSettings();

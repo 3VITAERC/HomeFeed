@@ -4,6 +4,7 @@ Handles cache management and application settings.
 """
 
 import os
+import shutil
 from flask import Blueprint, request, jsonify
 
 from app.config import (
@@ -130,7 +131,8 @@ def get_cache_info():
     return jsonify({
         'files': cache_files,
         'size': cache_size,
-        'size_formatted': size_str
+        'size_formatted': size_str,
+        'ffmpeg_available': shutil.which('ffmpeg') is not None,
     })
 
 
