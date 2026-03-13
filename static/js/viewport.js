@@ -76,7 +76,9 @@ function _ensureAudioElement() {
  */
 function _videoSrcToAudioSrc(videoSrc) {
     try {
-        const url = new URL(videoSrc);
+        // Accept both absolute URLs (from video.src) and relative URLs
+        // (from slide.dataset.src) by always providing an origin as base.
+        const url = new URL(videoSrc, window.location.origin);
         const path = url.searchParams.get('path');
         if (!path) return null;
         return `/video-audio?path=${encodeURIComponent(path)}`;
@@ -569,12 +571,25 @@ function _deactivateMedia(slide) {
 // ─── Audio preloading (no-op) ─────────────────────────────────────────────────
 
 /**
- * (No-op) Audio is handled via the persistent <audio> element.
+ * Warm the browser's HTTP cache for a video slide's audio track.
  *
- * @param {string} _videoSrc - unused
+ * Called by sequentialPreload() for each ahead video slide. Fires a
+ * low-priority fetch to /video-audio so the server runs ffmpeg in the
+ * background and the browser caches the result. When the user scrolls
+ * to that slide and _startAudioForVideo() sets _audioEl.src, the browser
+ * serves the audio instantly from cache — no ffmpeg latency at that moment.
+ *
+ * @param {string} slideSrc - slide.dataset.src value (relative URL)
  */
-export function preloadAudioForNextSlide(_videoSrc) {
-    // No-op: audio comes from the persistent <audio> element.
+export function preloadAudioForNextSlide(slideSrc) {
+    if (_ffmpegUnavailable) return;
+
+    const audioSrc = _videoSrcToAudioSrc(slideSrc);
+    if (!audioSrc) return;
+
+    // Fire-and-forget — we only care about warming the cache, not the response.
+    // 'low' priority keeps this from competing with the video preload fetch.
+    fetch(audioSrc, { priority: 'low' }).catch(() => {});
 }
 
 export default {

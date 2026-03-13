@@ -1318,8 +1318,10 @@ function sequentialPreload(centerIndex, current, max, ahead = true, generation =
         // Pass isPreload=true to force eager loading (not lazy)
         loadImageForSlide(targetSlide, false, isNextSlide, true);
         
-        // Preload audio for next video slide (+1 position)
-        if (isNextSlide) {
+        // Warm the audio cache for all ahead video slides (not just +1).
+        // Audio files are tiny so preloading the full chain costs almost nothing
+        // and means audio is always ready from cache when the user arrives.
+        if (ahead) {
             const src = targetSlide.dataset.src;
             if (src && isVideoUrl(src)) {
                 preloadAudioForNextSlide(src);
