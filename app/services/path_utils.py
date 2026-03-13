@@ -12,7 +12,6 @@ from app.config import (
     THUMBNAIL_DIR,
     SUPPORTED_FORMATS,
     VIDEO_FORMATS,
-    MAX_VIDEO_SIZE,
 )
 
 

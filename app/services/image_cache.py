@@ -18,7 +18,6 @@ from app.config import (
     CACHE_TTL_HDD,
     SUPPORTED_FORMATS,
     VIDEO_FORMATS,
-    MAX_VIDEO_SIZE,
     EXIF_DATE_CACHE_FILE,
 )
 from app.services.path_utils import expand_path, normalize_path
@@ -337,11 +336,6 @@ def get_all_images() -> List[str]:
                             file_ctime = file_stat.st_ctime
                         except OSError:
                             continue  # Skip unreadable files
-
-                        # Check video size limit
-                        if suffix in VIDEO_FORMATS:
-                            if file_size > MAX_VIDEO_SIZE:
-                                continue  # Skip videos over size limit
 
                         # Compute effective sort date.
                         # Passing file stats lets get_effective_date() consult the

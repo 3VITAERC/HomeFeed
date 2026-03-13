@@ -180,7 +180,7 @@ sudo apt install ffmpeg    # Ubuntu
 ```
 Windows: download from [ffmpeg.org](https://ffmpeg.org/download.html)
 
-**Supported formats:** JPG, PNG, GIF, WebP, HEIC — Videos: MOV, M4V, MP4, WebM (under 75MB)
+**Supported formats:** JPG, PNG, GIF, WebP, HEIC — Videos: MOV, M4V, MP4, WebM
 
 ---
 

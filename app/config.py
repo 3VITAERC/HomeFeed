@@ -28,9 +28,6 @@ SUPPORTED_FORMATS: Set[str] = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic'
 VIDEO_FORMATS: Set[str] = {'.m4v', '.mp4', '.mov', '.webm'}
 GIF_FORMATS: Set[str] = {'.gif'}
 
-# Size limits
-MAX_VIDEO_SIZE = 75 * 1024 * 1024  # 75 MB limit for videos
-
 # Thumbnail settings
 THUMBNAIL_MAX_SIZE = 1920  # Max width/height for thumbnails
 THUMBNAIL_QUALITY = 85  # WebP quality (0-100)
