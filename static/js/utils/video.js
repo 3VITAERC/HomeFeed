@@ -64,6 +64,8 @@ export function showMuteIconFeedback(slide, isMuted) {
 
 let _pbVideo = null;     // video currently wired to the shared bar
 let _pbHandlers = {};    // event handler refs for cleanup
+let _pbOnPlay = null;    // callback to start audio when video is played via button
+let _pbOnPause = null;   // callback to stop audio when video is paused via button
 
 /**
  * Detach the shared progress bar from any current video and hide it.
@@ -90,6 +92,8 @@ export function detachProgressBar() {
 
     _pbVideo = null;
     _pbHandlers = {};
+    _pbOnPlay = null;
+    _pbOnPause = null;
 }
 
 /**
@@ -97,8 +101,11 @@ export function detachProgressBar() {
  * Call this whenever a video slide becomes active.
  *
  * @param {HTMLVideoElement} video
+ * @param {Object} [audioCallbacks] - Optional callbacks to sync audio with play/pause
+ * @param {Function} [audioCallbacks.onPlay]  - Called when user plays via button
+ * @param {Function} [audioCallbacks.onPause] - Called when user pauses via button
  */
-export function attachProgressBarToVideo(video) {
+export function attachProgressBarToVideo(video, { onPlay, onPause } = {}) {
     const container = document.getElementById('videoProgressBar');
     if (!container) return;
 
@@ -115,6 +122,8 @@ export function attachProgressBarToVideo(video) {
     if (!progressBar || !progressFilled) return;
 
     _pbVideo = video;
+    _pbOnPlay  = onPlay  || null;
+    _pbOnPause = onPause || null;
 
     // ── Progress / time ──────────────────────────────────────────────────────
 
@@ -201,8 +210,10 @@ export function attachProgressBarToVideo(video) {
             if (!_pbVideo) return;
             if (_pbVideo.paused || _pbVideo.ended) {
                 _pbVideo.play().catch(() => {});
+                _pbOnPlay?.();
             } else {
                 _pbVideo.pause();
+                _pbOnPause?.();
             }
         });
         btn.addEventListener('touchend', (e) => { e.stopPropagation(); }, { passive: true });

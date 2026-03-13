@@ -17,6 +17,7 @@ from app.services.data import (
     save_active_trash,
     cleanup_active_trash,
     cleanup_active_favorites,
+    load_active_seen,
 )
 from app.services.path_utils import (
     normalize_path,
@@ -115,6 +116,42 @@ def get_trash_count():
     """Get count of trashed images."""
     trash = cleanup_active_trash()
     return jsonify({'count': len(trash)})
+
+
+@trash_bp.route('/api/trash/watched', methods=['POST'])
+def trash_watched():
+    """Mark all watched (seen) media that is NOT favorited for deletion.
+
+    Reads the current profile's seen history and favorites, then adds
+    every seen path that isn't already favorited or trashed to the trash list.
+    Mutual exclusion with favorites is maintained (no favorites are removed).
+
+    Returns:
+        JSON with success flag and count of newly trashed items.
+    """
+    seen_data = load_active_seen()
+    seen_paths = set(seen_data.get('seen', {}).keys())
+
+    favorites = set(load_active_favorites())
+    trash = load_active_trash()
+    trash_set = set(trash)
+
+    added = 0
+    for path in seen_paths:
+        if path in favorites or path in trash_set:
+            continue
+        if not os.path.exists(path):
+            continue
+        if not is_path_allowed(path):
+            continue
+        trash.append(path)
+        trash_set.add(path)
+        added += 1
+
+    if added > 0:
+        save_active_trash(trash)
+
+    return jsonify({'success': True, 'added_count': added})
 
 
 @trash_bp.route('/api/trash/empty', methods=['POST'])

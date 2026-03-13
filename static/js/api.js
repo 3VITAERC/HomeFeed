@@ -331,6 +331,15 @@ export async function emptyTrash() {
     return post('/api/trash/empty', {});
 }
 
+/**
+ * Trash all watched media that hasn't been favorited
+ *
+ * @returns {Promise<{success: boolean, added_count: number}>}
+ */
+export async function trashWatched() {
+    return post('/api/trash/watched', {});
+}
+
 // ============ Settings API ============
 
 /**
@@ -519,6 +528,7 @@ export default {
     getTrashImages,
     getTrashCount,
     emptyTrash,
+    trashWatched,
     // Settings
     getSettings,
     updateSettings,

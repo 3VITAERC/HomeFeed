@@ -2764,18 +2764,23 @@ html, body {
     letter-spacing: 0.04em;
 }
 
+.seen-action-btns {
+    display: flex;
+    gap: 8px;
+}
+
 .settings-reset-seen-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    width: 100%;
-    padding: 12px 20px;
+    gap: 8px;
+    flex: 1;
+    padding: 12px 14px;
     background: rgba(52, 199, 89, 0.1);
     border: 1px solid rgba(52, 199, 89, 0.2);
     border-radius: 12px;
     color: #34C759;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.2s;
@@ -2790,6 +2795,37 @@ html, body {
 }
 
 .settings-reset-seen-btn svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.settings-trash-watched-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex: 1;
+    padding: 12px 14px;
+    background: rgba(255, 69, 58, 0.1);
+    border: 1px solid rgba(255, 69, 58, 0.2);
+    border-radius: 12px;
+    color: #FF453A;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.settings-trash-watched-btn:hover {
+    background: rgba(255, 69, 58, 0.18);
+}
+
+.settings-trash-watched-btn:active {
+    transform: scale(0.98);
+}
+
+.settings-trash-watched-btn svg {
     width: 18px;
     height: 18px;
     flex-shrink: 0;

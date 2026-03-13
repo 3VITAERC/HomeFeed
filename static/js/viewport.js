@@ -381,8 +381,11 @@ function _activateMedia(slide) {
             _stopAudio();
             _activeVideo = video;
 
-            // Wire shared progress bar to this video
-            attachProgressBarToVideo(video);
+            // Wire shared progress bar to this video, with audio callbacks
+            attachProgressBarToVideo(video, {
+                onPlay:  () => { if (_audioEnabled) _startAudioForVideo(video); },
+                onPause: () => { _stopAudio(); },
+            });
 
             const playPromise = video.play();
             if (playPromise !== undefined) {
@@ -393,6 +396,13 @@ function _activateMedia(slide) {
                     }
                 }).catch((err) => {
                     console.log(`[Viewport] Video play blocked for slide ${slide.dataset.index}: ${err.message}`);
+                    // Retry once when data is available (handles race where
+                    // _activateMedia fires before video has loaded enough data)
+                    video.addEventListener('canplay', () => {
+                        if (_activeVideo === video && video.paused) {
+                            video.play().catch(() => {});
+                        }
+                    }, { once: true });
                 });
             }
         } else {

@@ -276,11 +276,34 @@ function setupEventListeners() {
             });
         });
     }
+
+    // Trash watched button (in info modal)
+    const trashWatchedBtn = document.getElementById('trashWatchedBtn');
+    if (trashWatchedBtn) {
+        trashWatchedBtn.addEventListener('click', () => {
+            showConfirmModal({
+                title: 'Trash All Watched Media?',
+                message: 'This will mark all media you\'ve already seen — except your favorites — for deletion. You can review them in the trash view and permanently delete from Settings. Favorites are never affected.',
+                confirmText: 'Trash Watched',
+                cancelText: 'Cancel',
+                danger: true,
+                onConfirm: async () => {
+                    const result = await API.trashWatched();
+                    if (result.added_count > 0) {
+                        // Refresh trash state
+                        const trashData = await API.getTrash();
+                        state.trash = new Set(trashData.trash.map(url => extractPath(url)));
+                        updateTrashButton();
+                    }
+                }
+            });
+        });
+    }
     if (settingsModalClose) settingsModalClose.addEventListener('click', hideSettingsModal);
     if (shortcutsModalClose) shortcutsModalClose.addEventListener('click', hideShortcutsModal);
     if (foldersModalClose) foldersModalClose.addEventListener('click', hideFoldersModal);
     if (trashModalClose) trashModalClose.addEventListener('click', hideTrashModal);
-    
+
     // Modal backdrop clicks
     [infoModal, settingsModal, shortcutsModal, foldersModal, trashModal, deleteConfirmModal].forEach(modal => {
         if (modal) {
