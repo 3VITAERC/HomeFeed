@@ -1294,6 +1294,25 @@ html, body {
     }
 }
 
+/* Mobile landscape: shrink action bar to fit between search icon and timeline */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+    .action-bar {
+        gap: 6px;
+        right: 16px;
+        bottom: 70px;
+    }
+
+    .action-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .action-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+}
+
 /* ============ Info Modal ============ */
 
 .info-modal {
