@@ -238,14 +238,8 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
         )
 
         if result.returncode != 0 or not os.path.exists(tmp_path):
-            # Log the tail of stderr — the banner fills the first ~200 chars,
-            # the actual error is always at the end.
-            stderr_tail = result.stderr.decode(errors='replace')[-400:]
-            logger.warning(
-                "ffmpeg audio extraction failed for %s: ...%s",
-                video_path,
-                stderr_tail,
-            )
+            # Video-only files (no audio track) are a normal condition — debug only.
+            logger.debug("No audio track in %s (ffmpeg exit %d)", video_path, result.returncode)
             # Cache the "no audio" result so we don't re-run ffmpeg for this
             # file on every subsequent request (e.g. preload fetches, iOS probes).
             _audio_cache[cache_key] = _AUDIO_NO_TRACK
@@ -256,7 +250,7 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
 
         size = os.path.getsize(tmp_path)
         if size == 0:
-            logger.warning("ffmpeg produced empty audio for %s (no audio track?)", video_path)
+            logger.debug("ffmpeg produced empty audio for %s (no audio track)", video_path)
             _audio_cache[cache_key] = _AUDIO_NO_TRACK
             _audio_cache.move_to_end(cache_key)
             if len(_audio_cache) > _AUDIO_CACHE_MAX:
