@@ -174,9 +174,10 @@ def create_video_poster(
 def extract_video_audio(video_path: str) -> Optional[bytes]:
     """Extract the audio track from a video file and return it as bytes.
 
-    Uses ffmpeg to remux the audio stream (no re-encoding) into an M4A
+    Uses ffmpeg to transcode the audio stream to AAC 128k in an M4A
     container with the moov atom at the front (faststart) so it is
-    immediately seekable by the browser.
+    immediately seekable by the browser. Transcoding (rather than stream
+    copy) ensures compatibility with any input audio codec.
 
     The result is held in memory only — no file is left on disk.
 
@@ -195,11 +196,12 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
     try:
         cmd = [
             'ffmpeg',
-            '-y',               # overwrite temp file without prompting
+            '-y',                    # overwrite temp file without prompting
             '-i', video_path,
-            '-vn',              # strip video stream
-            '-acodec', 'copy',  # copy audio as-is — no re-encode, near-instant
-            '-movflags', 'faststart',  # moov atom at front for instant seek
+            '-vn',                   # strip video stream
+            '-acodec', 'aac',        # transcode to AAC — handles any input codec
+            '-b:a', '128k',          # standard quality, ~1MB/min
+            '-movflags', 'faststart', # moov atom at front for instant seek
             tmp_path,
         ]
 
@@ -210,10 +212,13 @@ def extract_video_audio(video_path: str) -> Optional[bytes]:
         )
 
         if result.returncode != 0 or not os.path.exists(tmp_path):
+            # Log the tail of stderr — the banner fills the first ~200 chars,
+            # the actual error is always at the end.
+            stderr_tail = result.stderr.decode(errors='replace')[-400:]
             logger.warning(
-                "ffmpeg audio extraction failed for %s: %s",
+                "ffmpeg audio extraction failed for %s: ...%s",
                 video_path,
-                result.stderr.decode()[:300],
+                stderr_tail,
             )
             return None
 
