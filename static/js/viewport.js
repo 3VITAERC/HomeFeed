@@ -549,10 +549,6 @@ function _deactivateMedia(slide) {
 
     if (isVideoUrl(src)) {
         const video = slide.querySelector('video');
-        const poster = slide.querySelector('.video-poster');
-
-        const videoLoading = video && video.networkState === HTMLMediaElement.NETWORK_LOADING;
-        const posterLoading = poster && !poster.complete;
 
         if (video) {
             video.pause();
@@ -562,15 +558,14 @@ function _deactivateMedia(slide) {
                 _activeVideo = null;
                 detachProgressBar();
             }
-
-            if (videoLoading || posterLoading) {
-                _clearSlideContent(slide);
-            } else {
-                video.preload = 'none';
-            }
-        } else if (posterLoading) {
-            _clearSlideContent(slide);
         }
+
+        // Always fully tear down video content: removes the element and releases
+        // the media decoder pipeline. The slide element stays in the DOM (needed
+        // for scroll position). needsLoad re-fires when the user scrolls back.
+        // This prevents decoder exhaustion after 100+ scrolls — preload='none'
+        // only hints the browser, it doesn't actually free the decoder handle.
+        _clearSlideContent(slide);
     }
 
     if (isGifUrl(src)) {
