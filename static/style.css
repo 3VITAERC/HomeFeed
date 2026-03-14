@@ -512,10 +512,10 @@ html, body {
 .action-bar {
     position: fixed;
     right: 24px;
-    bottom: 70px;
+    bottom: 80px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 9px;
     z-index: 100;
 }
 
@@ -1289,7 +1289,7 @@ html, body {
 /* Safe area adjustments for action bar */
 @supports (padding-top: env(safe-area-inset-top)) {
     .action-bar {
-        bottom: calc(70px + env(safe-area-inset-bottom));
+        bottom: calc(80px + env(safe-area-inset-bottom));
         right: calc(16px + env(safe-area-inset-right));
     }
 }

@@ -1508,7 +1508,8 @@ function updateFilePathDisplay() {
         folderEl = filePathDisplay.querySelector('.file-path-folder');
         fileEl = filePathDisplay.querySelector('.file-path-filename');
         // Add listener ONCE
-        folderEl.addEventListener('click', () => {
+        folderEl.addEventListener('click', (e) => {
+            if (e.clientX > window.innerWidth / 2) return;
             const currentFolderPath = folderEl.dataset.path;
             if (currentFolderPath) enterFolderMode(currentFolderPath);
         });

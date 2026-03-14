@@ -3,7 +3,7 @@
  * Strategy: Cache-first for app shell (HTML/CSS/JS), network-only for images/API.
  */
 
-const CACHE_NAME = 'homefeed-shell-v2';
+const CACHE_NAME = 'homefeed-shell-v4';
 
 const SHELL_URLS = [
   '/',
