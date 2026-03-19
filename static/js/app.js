@@ -37,7 +37,11 @@ function escapeHtml(str) {
 let scrollContainer, noImages, noFavorites, noUnseen, jumpModal, jumpInput, jumpTotal;
 let jumpCancel, jumpGo, exitFilterBtn, noTrash, exitTrashBtn, exitUnseenBtn;
 let loadingOverlay;
-let heartBtn, trashBtn, commentsBtn, shuffleBtn, infoBtn, settingsBtn;
+let heartBtn, trashBtn, commentsBtn, shuffleBtn, infoBtn;
+let bottomNavHome, bottomNavUpload, bottomNavSettings;
+let uploadFileInput, uploadSheet, uploadSheetBackdrop, uploadSheetClose;
+let uploadDropZone, uploadProgressArea, uploadFileList, uploadOverallStatus;
+let uploadResultArea, uploadResultSummary, uploadDoneBtn;
 let noImagesSettingsBtn;
 let trashModal, trashModalClose, trashCountInfo, viewTrashBtn, emptyTrashBtn;
 let deleteConfirmModal, deleteConfirmMessage, deleteCancelBtn, deleteConfirmBtn;
@@ -175,8 +179,25 @@ function initDOMElements() {
     commentsBtn = document.getElementById('commentsBtn');
     shuffleBtn = document.getElementById('shuffleBtn');
     infoBtn = document.getElementById('infoBtn');
-    settingsBtn = document.getElementById('settingsBtn');
     noImagesSettingsBtn = document.getElementById('noImagesSettingsBtn');
+
+    // Bottom Nav
+    bottomNavHome = document.getElementById('bottomNavHome');
+    bottomNavUpload = document.getElementById('bottomNavUpload');
+    bottomNavSettings = document.getElementById('bottomNavSettings');
+
+    // Upload sheet
+    uploadFileInput = document.getElementById('uploadFileInput');
+    uploadSheet = document.getElementById('uploadSheet');
+    uploadSheetBackdrop = document.getElementById('uploadSheetBackdrop');
+    uploadSheetClose = document.getElementById('uploadSheetClose');
+    uploadDropZone = document.getElementById('uploadDropZone');
+    uploadProgressArea = document.getElementById('uploadProgressArea');
+    uploadFileList = document.getElementById('uploadFileList');
+    uploadOverallStatus = document.getElementById('uploadOverallStatus');
+    uploadResultArea = document.getElementById('uploadResultArea');
+    uploadResultSummary = document.getElementById('uploadResultSummary');
+    uploadDoneBtn = document.getElementById('uploadDoneBtn');
     
     // File path display
     filePathDisplay = document.getElementById('filePathDisplay');
@@ -230,8 +251,25 @@ function setupEventListeners() {
     if (commentsBtn) commentsBtn.addEventListener('click', openCurrentComments);
     if (shuffleBtn) shuffleBtn.addEventListener('click', toggleShuffle);
     if (infoBtn) infoBtn.addEventListener('click', showInfoModal);
-    if (settingsBtn) settingsBtn.addEventListener('click', showSettingsModal);
     if (noImagesSettingsBtn) noImagesSettingsBtn.addEventListener('click', showSettingsModal);
+
+    // Bottom nav
+    if (bottomNavHome) bottomNavHome.addEventListener('click', handleBottomNavHome);
+    if (bottomNavUpload) bottomNavUpload.addEventListener('click', openUploadSheet);
+    if (bottomNavSettings) bottomNavSettings.addEventListener('click', showSettingsModal);
+
+    // Upload sheet
+    if (uploadSheetBackdrop) uploadSheetBackdrop.addEventListener('click', closeUploadSheet);
+    if (uploadSheetClose) uploadSheetClose.addEventListener('click', closeUploadSheet);
+    if (uploadDropZone) uploadDropZone.addEventListener('click', () => uploadFileInput?.click());
+    if (uploadDoneBtn) uploadDoneBtn.addEventListener('click', closeUploadSheet);
+    if (uploadFileInput) {
+        uploadFileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+                handleFilesSelected(e.target.files);
+            }
+        });
+    }
     
     // Double-tap to like
     setupDoubleTapToLike();
@@ -3991,6 +4029,128 @@ async function softRefreshImages() {
     } catch (error) {
         console.error('[softRefreshImages] Failed:', error);
         hideLoadingOverlay();
+    }
+}
+
+// ============ Bottom Nav ============
+
+function handleBottomNavHome() {
+    // Mirror the __all__ folder quick-access logic (same as clicking the All tab)
+    if (state.showingFolderOnly) exitFolderMode();
+    if (state.showingFavoritesOnly) exitFavoritesMode();
+    if (state.showingTrashOnly) exitTrashMode();
+    if (state.showingUnseenOnly) exitUnseenMode();
+    state.currentTopNavFolder = 'all';
+    updateTopNavActiveState();
+    // Override exit-function savedIndex restores — always go to the very first image
+    scrollToImage(0, 'instant');
+}
+
+// ============ Upload Sheet ============
+
+function openUploadSheet() {
+    if (!uploadSheet) return;
+    resetUploadSheet();
+    uploadSheet.style.display = 'block';
+    uploadSheet.offsetHeight; // force reflow for CSS transition
+    uploadSheet.classList.add('open');
+}
+
+function closeUploadSheet() {
+    if (!uploadSheet) return;
+    uploadSheet.classList.remove('open');
+    setTimeout(() => {
+        uploadSheet.style.display = 'none';
+        resetUploadSheet();
+    }, 380); // match CSS transition duration
+}
+
+function resetUploadSheet() {
+    if (uploadDropZone) uploadDropZone.style.display = 'flex';
+    if (uploadProgressArea) uploadProgressArea.style.display = 'none';
+    if (uploadResultArea) uploadResultArea.style.display = 'none';
+    if (uploadFileList) uploadFileList.innerHTML = '';
+    if (uploadFileInput) uploadFileInput.value = '';
+}
+
+async function handleFilesSelected(fileList) {
+    const files = Array.from(fileList);
+    if (!files.length) return;
+
+    // Switch to progress view
+    if (uploadDropZone) uploadDropZone.style.display = 'none';
+    if (uploadProgressArea) uploadProgressArea.style.display = 'block';
+    if (uploadOverallStatus) {
+        uploadOverallStatus.textContent = `Uploading ${files.length} file${files.length > 1 ? 's' : ''}…`;
+    }
+
+    // Build per-file status rows
+    const statusEls = files.map(f => {
+        const item = document.createElement('div');
+        item.className = 'upload-file-item';
+        item.innerHTML = `<span class="upload-file-name">${escapeHtml(f.name)}</span><span class="upload-file-status uploading">Uploading…</span>`;
+        uploadFileList.appendChild(item);
+        return item.querySelector('.upload-file-status');
+    });
+
+    const formData = new FormData();
+    files.forEach(f => formData.append('files[]', f));
+
+    let result;
+    try {
+        const response = await fetch('/api/upload', { method: 'POST', body: formData });
+        result = await response.json();
+    } catch {
+        statusEls.forEach(el => { el.textContent = 'Failed'; el.className = 'upload-file-status error'; });
+        if (uploadOverallStatus) uploadOverallStatus.textContent = 'Upload failed. Check your connection.';
+        _showUploadResult(0, files.length);
+        return;
+    }
+
+    // Map server-saved filenames back to original files for status display
+    const uploadedNames = new Set(result.uploaded || []);
+    const errorMap = Object.fromEntries((result.errors || []).map(e => [e.name, e.error]));
+
+    files.forEach((f, i) => {
+        const el = statusEls[i];
+        // secure_filename may mangle names; do best-effort stem match
+        const stem = f.name.replace(/\.[^.]+$/, '');
+        const saved = [...uploadedNames].find(n => n === f.name || n.startsWith(stem));
+        if (saved) {
+            el.textContent = 'Done';
+            el.className = 'upload-file-status done';
+        } else if (errorMap[f.name]) {
+            el.textContent = errorMap[f.name];
+            el.className = 'upload-file-status error';
+        } else {
+            el.textContent = 'Skipped';
+            el.className = 'upload-file-status error';
+        }
+    });
+
+    const uploadedCount = (result.uploaded || []).length;
+    const errorCount = (result.errors || []).length;
+    if (uploadOverallStatus) {
+        uploadOverallStatus.textContent = `${uploadedCount} uploaded${errorCount > 0 ? `, ${errorCount} failed` : ''}`;
+    }
+    _showUploadResult(uploadedCount, errorCount);
+
+    if (uploadedCount > 0) {
+        softRefreshImages();
+    }
+}
+
+function _showUploadResult(uploadedCount, errorCount) {
+    if (uploadProgressArea) uploadProgressArea.style.display = 'none';
+    if (uploadResultArea) uploadResultArea.style.display = 'block';
+    if (uploadResultSummary) {
+        if (uploadedCount > 0 && errorCount === 0) {
+            uploadResultSummary.textContent = `${uploadedCount} file${uploadedCount > 1 ? 's' : ''} uploaded successfully.`;
+        } else if (uploadedCount > 0) {
+            uploadResultSummary.textContent = `${uploadedCount} uploaded, ${errorCount} failed.`;
+        } else {
+            uploadResultSummary.textContent = 'No files were uploaded.';
+        }
     }
 }
 

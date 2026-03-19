@@ -122,6 +122,7 @@ def create_app(config=None):
     from app.routes.seen import seen_bp
     from app.routes.profiles import profiles_bp
     from app.routes.comments import comments_bp
+    from app.routes.uploads import uploads_bp
 
     app.register_blueprint(images_bp)
     app.register_blueprint(folders_bp)
@@ -133,9 +134,10 @@ def create_app(config=None):
     app.register_blueprint(seen_bp)
     app.register_blueprint(profiles_bp)
     app.register_blueprint(comments_bp)
+    app.register_blueprint(uploads_bp)
 
-    # Limit request body size to prevent memory exhaustion
-    app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MB
+    # Limit request body size (raised to support photo/video uploads)
+    app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB
 
     # Add authentication and profile checks before each request
     from app.services import is_auth_enabled, is_authenticated
@@ -216,4 +218,18 @@ def create_app(config=None):
         response.headers['Referrer-Policy'] = 'same-origin'
         return response
 
+    _ensure_uploads_folder(project_root)
+
     return app
+
+
+def _ensure_uploads_folder(project_root: str) -> None:
+    """Create uploads/ dir and register it in config.json if not already present."""
+    uploads_dir = os.path.join(project_root, 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    from app.services.data import load_config, save_config
+    config = load_config()
+    if uploads_dir not in config.get('folders', []):
+        config.setdefault('folders', []).append(uploads_dir)
+        save_config(config)

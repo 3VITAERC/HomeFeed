@@ -205,6 +205,10 @@ export function isAnyModalOpen() {
     const commentsPanel = document.getElementById('commentsPanel');
     if (commentsPanel && commentsPanel.classList.contains('open')) return true;
 
+    // Upload sheet also uses .open class
+    const uploadSheetEl = document.getElementById('uploadSheet');
+    if (uploadSheetEl && uploadSheetEl.classList.contains('open')) return true;
+
     return false;
 }
 
