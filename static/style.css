@@ -96,11 +96,18 @@ html, body {
 
 /* ============ Fill Screen Mode (iPhone optimized) ============ */
 
-/* Fill Screen Mode - crops to fill viewport, no black bars */
+/* Fill Screen Mode - crops to fill viewport, no black bars.
+   Uses absolute positioning to break out of the slide's padding box
+   and fill the entire 100vh slide area. */
 .image-slide.fill-screen img,
 .image-slide.fill-screen video {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
+    max-height: none;
+    margin-bottom: 0;
     object-fit: cover;
     object-position: center center;
 }
