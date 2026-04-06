@@ -53,7 +53,16 @@ html, body {
     justify-content: center;
     background: var(--bg-dark);
     position: relative;
+    /* Shift flex center up into the visible zone above the bottom nav (40px tall).
+       box-sizing: border-box (global) keeps height: 100vh intact for scroll snap. */
+    padding-bottom: 40px;
     /* JavaScript unloads image/video elements as slides scroll out of range to manage memory */
+}
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .image-slide {
+        padding-bottom: calc(40px + env(safe-area-inset-bottom));
+    }
 }
 
 .image-slide img,
@@ -65,7 +74,6 @@ html, body {
     opacity: 0;
     transition: opacity 0.3s ease;
     image-orientation: from-image; /* Respect EXIF orientation for JPEGs */
-    margin-bottom: 50px; /* shift visual center 25px upward between the two navbars */
 }
 
 /* Desktop cutoff - limit image/video width on larger screens */
@@ -84,9 +92,14 @@ html, body {
 
 /* ============ Fill Screen Mode (iPhone optimized) ============ */
 
-/* Fill Screen Mode - crops to fill viewport, no black bars */
+/* Fill Screen Mode - crops to fill viewport, no black bars.
+   Uses absolute positioning to break out of the slide's padding box
+   and fill the entire 100vh slide area. */
 .image-slide.fill-screen img,
 .image-slide.fill-screen video {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     max-height: none;
