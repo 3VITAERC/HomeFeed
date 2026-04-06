@@ -53,7 +53,23 @@ html, body {
     justify-content: center;
     background: var(--bg-dark);
     position: relative;
+    /* Shift flex center up into the visible zone above the bottom nav (40px tall).
+       box-sizing: border-box (global) keeps height: 100vh intact for scroll snap. */
+    padding-bottom: 40px;
     /* JavaScript unloads image/video elements as slides scroll out of range to manage memory */
+}
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .image-slide {
+        padding-bottom: calc(40px + env(safe-area-inset-bottom));
+    }
+}
+
+/* Landscape: bottom nav hidden, content fills full viewport */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+    .image-slide {
+        padding-bottom: 0;
+    }
 }
 
 .image-slide img,
@@ -83,11 +99,18 @@ html, body {
 
 /* ============ Fill Screen Mode (iPhone optimized) ============ */
 
-/* Fill Screen Mode - crops to fill viewport, no black bars */
+/* Fill Screen Mode - crops to fill viewport, no black bars.
+   Uses absolute positioning to break out of the slide's padding box
+   and fill the entire 100vh slide area. */
 .image-slide.fill-screen img,
 .image-slide.fill-screen video {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
+    max-height: none;
+    margin-bottom: 0;
     object-fit: cover;
     object-position: center center;
 }
@@ -248,7 +271,7 @@ html, body {
    Stops right: 80px to clear the action bar (48px wide at right: 24px). */
 .bottom-info-bar {
     position: fixed;
-    bottom: 0;
+    bottom: 36px;
     left: 0;
     right: 0;
     padding: 0 16px 10px;
@@ -261,7 +284,8 @@ html, body {
 
 @supports (padding-top: env(safe-area-inset-top)) {
     .bottom-info-bar {
-        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        bottom: calc(36px + env(safe-area-inset-bottom));
+        padding-bottom: 10px;
         padding-left: calc(16px + env(safe-area-inset-left));
     }
 }
@@ -512,7 +536,7 @@ html, body {
 .action-bar {
     position: fixed;
     right: 24px;
-    bottom: 80px;
+    bottom: 116px;
     display: flex;
     flex-direction: column;
     gap: 9px;
@@ -1289,7 +1313,7 @@ html, body {
 /* Safe area adjustments for action bar */
 @supports (padding-top: env(safe-area-inset-top)) {
     .action-bar {
-        bottom: calc(80px + env(safe-area-inset-bottom));
+        bottom: calc(116px + env(safe-area-inset-bottom));
         right: calc(16px + env(safe-area-inset-right));
     }
 }
@@ -1314,6 +1338,7 @@ html, body {
 
     /* Push timeline toward bottom edge of frame */
     .bottom-info-bar {
+        bottom: 36px;
         padding-bottom: 5px;
     }
 }
@@ -3766,5 +3791,256 @@ html, body {
 
 .comments-send-btn:not(:disabled):active {
     transform: scale(0.9);
+}
+
+/* ============ Bottom Navigation Bar ============ */
+
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    /* No explicit height — buttons set content height; padding-bottom fills safe-area below */
+    padding-top: 14px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    z-index: 200;
+}
+
+.bottom-nav-btn {
+    flex: 1;
+    height: 26px;
+    border: none;
+    background: transparent;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
+}
+
+.bottom-nav-btn:active {
+    opacity: 1;
+    transform: scale(0.88);
+}
+
+.bottom-nav-btn svg {
+    width: 24px;
+    height: 24px;
+    stroke: white;
+}
+
+.bottom-nav-upload svg {
+    width: 28px;
+    height: 28px;
+}
+
+@media screen and (orientation: landscape) and (max-height: 500px) {
+    .bottom-nav {
+        display: none;
+    }
+}
+
+/* ============ Upload Bottom Sheet ============ */
+
+.upload-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    pointer-events: none;
+}
+
+.upload-sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: auto;
+}
+
+.upload-sheet.open .upload-sheet-backdrop {
+    opacity: 1;
+}
+
+.upload-sheet-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1c1c1e;
+    border-radius: 16px 16px 0 0;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1);
+    pointer-events: auto;
+    max-height: 70vh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.upload-sheet.open .upload-sheet-panel {
+    transform: translateY(0);
+}
+
+.upload-sheet-handle {
+    width: 36px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    margin: 10px auto 0;
+    flex-shrink: 0;
+}
+
+.upload-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+}
+
+.upload-sheet-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: white;
+    margin: 0;
+}
+
+.upload-sheet-close {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.7;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.upload-sheet-close svg {
+    width: 20px;
+    height: 20px;
+    stroke: white;
+}
+
+.upload-sheet-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.upload-drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 32px 16px;
+    border: 2px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: center;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.upload-drop-zone:active {
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.upload-drop-zone svg {
+    width: 40px;
+    height: 40px;
+    stroke: rgba(255, 255, 255, 0.5);
+    margin-bottom: 4px;
+}
+
+.upload-drop-zone p {
+    font-size: 15px;
+    color: white;
+    margin: 0;
+}
+
+.upload-drop-zone span {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.upload-overall-status {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.upload-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.upload-file-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.upload-file-name {
+    flex: 1;
+    color: white;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.upload-file-status {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.upload-file-status.uploading { color: #0a84ff; }
+.upload-file-status.done { color: #30d158; }
+.upload-file-status.error { color: #ff453a; }
+
+.upload-result-summary {
+    font-size: 15px;
+    color: white;
+    margin-bottom: 16px;
+    text-align: center;
+    padding: 8px 0;
+}
+
+.upload-done-btn {
+    width: 100%;
+    height: 44px;
+    border: none;
+    background: #0a84ff;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.upload-done-btn:active {
+    opacity: 0.8;
 }
 

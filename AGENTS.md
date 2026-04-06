@@ -563,7 +563,7 @@ The app tracks which images the user has scrolled past ("seen") to power the **N
 ```json
 {
   "seen": {
-    "/Users/john/Photos/vacation.jpg": {
+    "/Users/username/Photos/vacation.jpg": {
       "first_seen": 1708560000,
       "seen_count": 3,
       "last_seen": 1708900000

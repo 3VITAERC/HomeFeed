@@ -12,6 +12,7 @@ from app.routes.pages import pages_bp
 from app.routes.auth import auth_bp
 from app.routes.seen import seen_bp
 from app.routes.comments import comments_bp
+from app.routes.uploads import uploads_bp
 
 __all__ = [
     'images_bp',
@@ -23,4 +24,5 @@ __all__ = [
     'auth_bp',
     'seen_bp',
     'comments_bp',
+    'uploads_bp',
 ]
